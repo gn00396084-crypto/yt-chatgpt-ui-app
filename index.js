@@ -1,3 +1,8 @@
+// index.js (Railway deploy-ready) - MCP Server + ChatGPT Widget UI
+// Requires env:
+//   CF_WORKER_BASE_URL = https://xxx.workers.dev
+// Railway provides PORT automatically.
+
 import { createServer } from "node:http";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
@@ -11,111 +16,146 @@ if (!CF_WORKER_BASE_URL) {
   process.exit(1);
 }
 
-// ---------- UI template (minimal) ----------
+// ---------------- UI template (text/html+skybridge) ----------------
 const UI_HTML = `<!doctype html>
 <html>
-<head><meta charset="utf-8" /><meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>YouTube Finder</title>
-<style>
-body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;margin:0;padding:12px}
-.card{border:1px solid rgba(0,0,0,.12);border-radius:12px;padding:12px}
-.row{display:flex;gap:8px;align-items:center}
-input{flex:1;padding:10px 12px;border-radius:10px;border:1px solid rgba(0,0,0,.18)}
-button{padding:10px 12px;border-radius:10px;border:1px solid rgba(0,0,0,.18);background:#fff;cursor:pointer}
-small{opacity:.7}
-ul{list-style:none;padding:0;margin:12px 0 0}
-li{padding:10px 0;border-top:1px solid rgba(0,0,0,.08)}
-a{text-decoration:none}a:hover{text-decoration:underline}
-.badge{display:inline-block;font-size:12px;padding:2px 8px;border-radius:999px;border:1px solid rgba(0,0,0,.15);margin-left:8px}
-</style></head>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>YouTube Finder</title>
+  <style>
+    :root{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+    body{margin:0;padding:12px}
+    .card{border:1px solid rgba(0,0,0,.12);border-radius:12px;padding:12px}
+    .row{display:flex;gap:8px;align-items:center}
+    input{flex:1;padding:10px 12px;border-radius:10px;border:1px solid rgba(0,0,0,.18)}
+    button{padding:10px 12px;border-radius:10px;border:1px solid rgba(0,0,0,.18);background:#fff;cursor:pointer}
+    small{opacity:.7}
+    ul{list-style:none;padding:0;margin:12px 0 0}
+    li{padding:10px 0;border-top:1px solid rgba(0,0,0,.08)}
+    a{text-decoration:none}a:hover{text-decoration:underline}
+    .badge{display:inline-block;font-size:12px;padding:2px 8px;border-radius:999px;border:1px solid rgba(0,0,0,.15);margin-left:8px}
+  </style>
+</head>
 <body>
-<div id="app" class="card"></div>
-<script>
-function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]))}
-function render(payload){
-  const app=document.getElementById("app");
-  const info=payload?.structuredContent||payload||{};
-  const meta=payload?._meta||{};
-  const mode=meta.mode||"UNKNOWN";
-  const count=info.totalVideos??0;
-  app.innerHTML=\`
-    <div class="row">
-      <input id="q" placeholder="搜尋標題關鍵字，例如：雨 / 備用 / 江湖" />
-      <button id="btnSearch">搜尋</button>
-      <button id="btnLatest">最新</button>
-    </div>
-    <div style="margin-top:8px">
-      <small>模式：\${mode} ｜總片數：\${count} ｜更新：\${info.cachedAt||info.fetchedAt||""}</small>
-    </div>
-    <ul id="list"></ul>
-  \`;
-  document.getElementById("btnSearch").onclick=async()=>{
-    const q=document.getElementById("q").value.trim();
-    if(!q) return;
-    document.getElementById("list").innerHTML="<li>搜尋中...</li>";
-    const out=await window.openai.callTool("search_videos",{query:q,limit:30});
-    render(out);
-  };
-  document.getElementById("btnLatest").onclick=async()=>{
-    document.getElementById("list").innerHTML="<li>載入中...</li>";
-    const out=await window.openai.callTool("list_videos",{limit:30});
-    render(out);
-  };
-  const list=document.getElementById("list");
-  const videos=info.videos||[];
-  list.innerHTML = videos.length ? videos.map(v=>\`
-    <li>
-      <div><a href="\${v.url}" target="_blank" rel="noreferrer">\${escapeHtml(v.title)}</a></div>
-      <small>\${v.publishedAt||""}</small>
-      \${v.matched ? '<span class="badge">matched</span>' : ''}
-    </li>\`).join("") : "<li><small>無結果</small></li>";
-}
-(function boot(){
-  const payload=window.openai?.toolOutput;
-  if(!payload){
-    document.getElementById("app").innerHTML="<strong>尚未有工具輸出</strong><p><small>請在 ChatGPT 內觸發工具，例如「列出我最近30條影片」。</small></p>";
-    return;
-  }
-  render(payload);
-})();
-</script>
-</body></html>`;
+  <div id="app" class="card"></div>
+  <script>
+    function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]))}
 
-// ---------- MCP server ----------
+    async function callTool(name, args){
+      if(!window.openai?.callTool) throw new Error("window.openai.callTool unavailable (not running inside ChatGPT Apps iframe?)");
+      return await window.openai.callTool(name, args);
+    }
+
+    function render(payload){
+      const app=document.getElementById("app");
+      const info=payload?.structuredContent || payload || {};
+      const meta=payload?._meta || {};
+      const mode=meta.mode || "UNKNOWN";
+      const count=info.totalVideos ?? 0;
+
+      app.innerHTML=\`
+        <div class="row">
+          <input id="q" placeholder="搜尋標題關鍵字，例如：雨 / 備用 / 江湖" />
+          <button id="btnSearch">搜尋</button>
+          <button id="btnLatest">最新</button>
+        </div>
+        <div style="margin-top:8px">
+          <small>模式：\${mode} ｜總片數：\${count} ｜更新：\${info.cachedAt || info.fetchedAt || ""}</small>
+        </div>
+        <ul id="list"></ul>
+      \`;
+
+      document.getElementById("btnSearch").onclick=async()=>{
+        const q=document.getElementById("q").value.trim();
+        if(!q) return;
+        document.getElementById("list").innerHTML="<li>搜尋中...</li>";
+        const out=await callTool("search_videos",{query:q,limit:30});
+        render(out);
+      };
+
+      document.getElementById("btnLatest").onclick=async()=>{
+        document.getElementById("list").innerHTML="<li>載入中...</li>";
+        const out=await callTool("list_videos",{limit:30});
+        render(out);
+      };
+
+      const list=document.getElementById("list");
+      const videos=info.videos || [];
+      list.innerHTML = videos.length ? videos.map(v=>\`
+        <li>
+          <div><a href="\${v.url}" target="_blank" rel="noreferrer">\${escapeHtml(v.title)}</a></div>
+          <small>\${v.publishedAt || ""}</small>
+          \${v.matched ? '<span class="badge">matched</span>' : ''}
+        </li>\`).join("") : "<li><small>無結果</small></li>";
+    }
+
+    (function boot(){
+      const payload=window.openai?.toolOutput;
+      if(!payload){
+        document.getElementById("app").innerHTML =
+          "<strong>尚未有工具輸出</strong><p><small>請在 ChatGPT 內觸發工具，例如「列出我最近30條影片」。</small></p>";
+        return;
+      }
+      render(payload);
+    })();
+  </script>
+</body>
+</html>`;
+
+// ---------------- MCP server ----------------
 const mcp = new McpServer({ name: "YouTube Channel Finder", version: "1.0.0" });
 
-// UI resource (ChatGPT iframe widget)
-// MUST be text/html+skybridge for Apps SDK widget rendering
-//mcp.resource("video-widget", { mimeType: "text/html+skybridge", text: UI_HTML });
+// Resource URI that tools will reference via openai/outputTemplate
 const TEMPLATE_URI = "ui://widget/youtube-finder.html";
 
+// Register the widget template resource (compatible return shape)
 mcp.registerResource(
   "youtube-finder-widget",
   TEMPLATE_URI,
-  {},
+  { title: "YouTube Finder Widget" },
   async () => ({
-    contents: [
+    content: [
       {
-        uri: TEMPLATE_URI,
+        type: "text",
         mimeType: "text/html+skybridge",
-        text: UI_HTML,
-        _meta: {
-          "openai/widgetPrefersBorder": true,
-          "openai/widgetDomain": "https://chatgpt.com"
-        }
+        text: UI_HTML
       }
-    ]
+    ],
+    _meta: {
+      "openai/widgetPrefersBorder": true,
+      "openai/widgetAccessible": true
+    }
   })
 );
 
-const listSchema = z.object({ limit: z.number().int().min(1).max(500).optional() });
-const searchSchema = z.object({ query: z.string().min(1), limit: z.number().int().min(1).max(200).optional() });
+// ---------------- Tool schemas ----------------
+const listSchema = z.object({
+  limit: z.number().int().min(1).max(500).optional()
+});
 
+const searchSchema = z.object({
+  query: z.string().min(1),
+  limit: z.number().int().min(1).max(200).optional()
+});
+
+// ---------------- Helpers ----------------
 async function fetchIndex() {
-  const res = await fetch(`${CF_WORKER_BASE_URL}/my-channel/videos`, { headers: { Accept: "application/json" } });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(`Worker error ${res.status}: ${JSON.stringify(data)}`);
-  return data;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15000);
+
+  try {
+    const res = await fetch(`${CF_WORKER_BASE_URL}/my-channel/videos`, {
+      headers: { Accept: "application/json" },
+      signal: controller.signal
+    });
+
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(`Worker error ${res.status}: ${JSON.stringify(data)}`);
+    return data;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 function searchByTitle(videos, query, limit) {
@@ -129,61 +169,102 @@ function searchByTitle(videos, query, limit) {
   return out;
 }
 
-mcp.tool("list_videos", { description: "List latest videos (cached index).", inputSchema: listSchema }, async ({ limit }) => {
-  const idx = await fetchIndex();
-  const videos = (idx.videos || []).slice(0, limit ?? 30);
-  return {
-    structuredContent: {
-      channelId: idx.channelId,
-      channelTitle: idx.channelTitle,
-      totalVideos: idx.totalVideos,
-      fetchedAt: idx.fetchedAt,
-      cachedAt: idx.cachedAt,
-      videos
-    },
-    //_meta: { mode: "LIST", "openai/outputTemplate": "video-widget" }
-  _meta: { mode: "LIST", "openai/outputTemplate": TEMPLATE_URI, "openai/widgetAccessible": true }
+// ---------------- Tools (use registerTool for best compatibility) ----------------
+mcp.registerTool(
+  "list_videos",
+  {
+    title: "List Videos",
+    description: "List latest videos from my YouTube channel cached index.",
+    inputSchema: listSchema,
+    _meta: {
+      "openai/outputTemplate": TEMPLATE_URI,
+      "openai/widgetAccessible": true
+    }
+  },
+  async ({ limit }) => {
+    const idx = await fetchIndex();
+    const videos = (idx.videos || []).slice(0, limit ?? 30);
 
-  };
-});
+    return {
+      structuredContent: {
+        channelId: idx.channelId,
+        channelTitle: idx.channelTitle,
+        totalVideos: idx.totalVideos,
+        fetchedAt: idx.fetchedAt,
+        cachedAt: idx.cachedAt,
+        videos
+      },
+      _meta: { mode: "LIST" }
+    };
+  }
+);
 
-mcp.tool("search_videos", { description: "Search videos by title keyword.", inputSchema: searchSchema }, async ({ query, limit }) => {
-  const idx = await fetchIndex();
-  const videos = searchByTitle(idx.videos || [], query, limit ?? 30);
-  return {
-    structuredContent: {
-      channelId: idx.channelId,
-      channelTitle: idx.channelTitle,
-      totalVideos: idx.totalVideos,
-      fetchedAt: idx.fetchedAt,
-      cachedAt: idx.cachedAt,
-      videos
-    },
-   // _meta: { mode: "SEARCH", query, "openai/outputTemplate": "video-widget" }
-  _meta: { mode: "SEARCH", query, "openai/outputTemplate": TEMPLATE_URI, "openai/widgetAccessible": true }
+mcp.registerTool(
+  "search_videos",
+  {
+    title: "Search Videos",
+    description: "Search videos by title keyword in my cached channel index.",
+    inputSchema: searchSchema,
+    _meta: {
+      "openai/outputTemplate": TEMPLATE_URI,
+      "openai/widgetAccessible": true
+    }
+  },
+  async ({ query, limit }) => {
+    const idx = await fetchIndex();
+    const videos = searchByTitle(idx.videos || [], query, limit ?? 30);
 
-  };
-});
+    return {
+      structuredContent: {
+        channelId: idx.channelId,
+        channelTitle: idx.channelTitle,
+        totalVideos: idx.totalVideos,
+        fetchedAt: idx.fetchedAt,
+        cachedAt: idx.cachedAt,
+        videos
+      },
+      _meta: { mode: "SEARCH", query }
+    };
+  }
+);
 
-// ---------- HTTP server wiring ----------
+// ---------------- HTTP server wiring ----------------
+// IMPORTANT: avoid reconnecting repeatedly on every request.
+let connected = false;
+
 const httpServer = createServer(async (req, res) => {
-  if (!req.url) return;
+  try {
+    if (!req.url) return;
 
-  // Simple health
-  if (req.method === "GET" && req.url === "/") {
-    res.writeHead(200, { "Content-Type": "text/plain; charset=utf-8" });
-    res.end("MCP server running");
-    return;
+    // Health
+    if (req.method === "GET" && req.url === "/") {
+      res.writeHead(200, { "Content-Type": "text/plain; charset=utf-8" });
+      res.end("MCP server running");
+      return;
+    }
+
+    // MCP endpoint
+    if (req.url.startsWith("/mcp")) {
+      const transport = new StreamableHTTPServerTransport({ path: "/mcp" });
+
+      if (!connected) {
+        await mcp.connect(transport);
+        connected = true;
+      }
+
+      return transport.handleRequest(req, res);
+    }
+
+    res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
+    res.end("Not Found");
+  } catch (err) {
+    res.writeHead(500, { "Content-Type": "application/json; charset=utf-8" });
+    res.end(JSON.stringify({ error: err?.message || "Unknown error" }));
   }
-
-  if (req.url.startsWith("/mcp")) {
-    const transport = new StreamableHTTPServerTransport({ path: "/mcp" });
-    await mcp.connect(transport);
-    return transport.handleRequest(req, res);
-  }
-
-  res.writeHead(404);
-  res.end("Not Found");
 });
 
-httpServer.listen(PORT, () => console.log("Listening on", PORT));
+httpServer.listen(PORT, () => {
+  console.log("Listening on", PORT);
+  console.log("MCP endpoint: /mcp");
+  console.log("Worker base:", CF_WORKER_BASE_URL);
+});
