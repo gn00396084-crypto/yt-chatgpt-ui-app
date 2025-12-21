@@ -1,9 +1,13 @@
-
 {
-  "name": "mcp-server",
+  "name": "yt-chatgpt-ui-app",
   "private": true,
   "type": "module",
+  "engines": { "node": ">=20" },
   "scripts": {
     "start": "node index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "zod": "^3.24.0"
   }
 }
