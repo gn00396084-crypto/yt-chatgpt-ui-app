@@ -228,9 +228,13 @@ mcp.registerTool(
   }
 );
 
-// ---------------- HTTP server wiring ----------------
-// IMPORTANT: avoid reconnecting repeatedly on every request.
-let connected = false;
+// ---------------- HTTP server wiring (FIXED) ----------------
+
+// Create ONE transport for the lifetime of the process
+const transport = new StreamableHTTPServerTransport({ path: "/mcp" });
+
+// Connect ONCE at startup (important)
+await mcp.connect(transport);
 
 const httpServer = createServer(async (req, res) => {
   try {
@@ -245,13 +249,6 @@ const httpServer = createServer(async (req, res) => {
 
     // MCP endpoint
     if (req.url.startsWith("/mcp")) {
-      const transport = new StreamableHTTPServerTransport({ path: "/mcp" });
-
-      if (!connected) {
-        await mcp.connect(transport);
-        connected = true;
-      }
-
       return transport.handleRequest(req, res);
     }
 
