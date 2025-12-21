@@ -107,7 +107,7 @@ const UI_HTML = `<!doctype html>
 const mcp = new McpServer({ name: "YouTube Channel Finder", version: "1.0.0" });
 
 // Resource URI that tools will reference via openai/outputTemplate
-const TEMPLATE_URI = "ui://widget/youtube-finder.html";
+//const TEMPLATE_URI = "ui://widget/youtube-finder.html";
 
 // Register the widget template resource (compatible return shape)
 const TEMPLATE_URI = "ui://widget/youtube-finder.html";
