@@ -110,6 +110,8 @@ const mcp = new McpServer({ name: "YouTube Channel Finder", version: "1.0.0" });
 const TEMPLATE_URI = "ui://widget/youtube-finder.html";
 
 // Register the widget template resource (compatible return shape)
+const TEMPLATE_URI = "ui://widget/youtube-finder.html";
+
 mcp.registerResource(
   "youtube-finder-widget",
   TEMPLATE_URI,
@@ -117,9 +119,10 @@ mcp.registerResource(
   async () => ({
     contents: [
       {
-        type: "text",
-        mimeType: "text/html+skybridge",
-        text: UI_HTML
+        uri: TEMPLATE_URI,              // ✅ 必填
+        type: "text",                   // ✅ 必填
+        mimeType: "text/html+skybridge",// ✅ 必填
+        text: UI_HTML                   // ✅ 必填
       }
     ],
     _meta: {
