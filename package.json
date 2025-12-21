@@ -1,4 +1,4 @@
-cat > package.json <<'EOF'
+
 {
   "name": "mcp-server",
   "private": true,
@@ -7,4 +7,3 @@ cat > package.json <<'EOF'
     "start": "node index.js"
   }
 }
-EOF
