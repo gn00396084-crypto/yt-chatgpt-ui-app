@@ -115,7 +115,7 @@ mcp.registerResource(
   TEMPLATE_URI,
   { title: "YouTube Finder Widget" },
   async () => ({
-    content: [
+    contents: [
       {
         type: "text",
         mimeType: "text/html+skybridge",
