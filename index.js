@@ -86,7 +86,27 @@ const mcp = new McpServer({ name: "YouTube Channel Finder", version: "1.0.0" });
 
 // UI resource (ChatGPT iframe widget)
 // MUST be text/html+skybridge for Apps SDK widget rendering
-mcp.resource("video-widget", { mimeType: "text/html+skybridge", text: UI_HTML });
+//mcp.resource("video-widget", { mimeType: "text/html+skybridge", text: UI_HTML });
+const TEMPLATE_URI = "ui://widget/youtube-finder.html";
+
+mcp.registerResource(
+  "youtube-finder-widget",
+  TEMPLATE_URI,
+  {},
+  async () => ({
+    contents: [
+      {
+        uri: TEMPLATE_URI,
+        mimeType: "text/html+skybridge",
+        text: UI_HTML,
+        _meta: {
+          "openai/widgetPrefersBorder": true,
+          "openai/widgetDomain": "https://chatgpt.com"
+        }
+      }
+    ]
+  })
+);
 
 const listSchema = z.object({ limit: z.number().int().min(1).max(500).optional() });
 const searchSchema = z.object({ query: z.string().min(1), limit: z.number().int().min(1).max(200).optional() });
@@ -121,7 +141,9 @@ mcp.tool("list_videos", { description: "List latest videos (cached index).", inp
       cachedAt: idx.cachedAt,
       videos
     },
-    _meta: { mode: "LIST", "openai/outputTemplate": "video-widget" }
+    //_meta: { mode: "LIST", "openai/outputTemplate": "video-widget" }
+  _meta: { mode: "LIST", "openai/outputTemplate": TEMPLATE_URI, "openai/widgetAccessible": true }
+
   };
 });
 
@@ -137,7 +159,9 @@ mcp.tool("search_videos", { description: "Search videos by title keyword.", inpu
       cachedAt: idx.cachedAt,
       videos
     },
-    _meta: { mode: "SEARCH", query, "openai/outputTemplate": "video-widget" }
+   // _meta: { mode: "SEARCH", query, "openai/outputTemplate": "video-widget" }
+  _meta: { mode: "SEARCH", query, "openai/outputTemplate": TEMPLATE_URI, "openai/widgetAccessible": true }
+
   };
 });
 
