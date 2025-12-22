@@ -152,3 +152,15 @@ createServer((req,res)=>{
   if(req.url?.startsWith("/mcp")) return transport.handleRequest(req,res);
   res.statusCode=404;res.end("Not Found");
 }).listen(PORT,()=>console.log("Listening",PORT));
+if (req.method === "GET" && req.url === "/debug/worker") {
+  try {
+    const r = await fetch("https://lingering-tooth-6667.gn00396084.workers.dev/my-channel/videos?limit=3");
+    const text = await r.text();
+    res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+    res.end(JSON.stringify({ ok: true, status: r.status, bodyPreview: text.slice(0, 500) }, null, 2));
+  } catch (e) {
+    res.writeHead(500, { "Content-Type": "application/json; charset=utf-8" });
+    res.end(JSON.stringify({ ok: false, error: String(e?.message || e) }, null, 2));
+  }
+  return;
+}
