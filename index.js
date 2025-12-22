@@ -1,4 +1,4 @@
-// index.js — FINAL, Railway deploy-ready
+// index.js — FINAL STABLE VERSION (Railway-ready)
 // Env required:
 //   CF_WORKER_BASE_URL = https://xxx.workers.dev
 
@@ -7,6 +7,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { z } from "zod";
 
+/* ---------------- Env ---------------- */
 const PORT = Number(process.env.PORT || 3000);
 const CF_WORKER_BASE_URL = process.env.CF_WORKER_BASE_URL;
 
@@ -33,21 +34,20 @@ small{opacity:.7}
 ul{list-style:none;padding:0;margin:12px 0 0}
 li{padding:10px 0;border-top:1px solid rgba(0,0,0,.08)}
 a{text-decoration:none}a:hover{text-decoration:underline}
-.badge{display:inline-block;font-size:12px;padding:2px 8px;border-radius:999px;border:1px solid rgba(0,0,0,.15);margin-left:8px}
 </style>
 </head>
 <body>
 <div id="app" class="card"></div>
 <script>
-function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]))}
-async function callTool(name,args){return window.openai.callTool(name,args);}
-function render(payload){
-  const info=payload?.structuredContent||{};
-  const meta=payload?._meta||{};
+function esc(s){return String(s).replace(/[&<>"']/g,c=>({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]))}
+async function callTool(n,a){return window.openai.callTool(n,a);}
+function render(p){
+  const info=p?.structuredContent||{};
+  const meta=p?._meta||{};
   const app=document.getElementById("app");
   app.innerHTML=\`
     <div class="row">
-      <input id="q" placeholder="搜尋標題關鍵字"/>
+      <input id="q" placeholder="搜尋標題"/>
       <button id="s">搜尋</button>
       <button id="l">最新</button>
     </div>
@@ -64,7 +64,7 @@ function render(payload){
   const list=document.getElementById("list");
   list.innerHTML=(info.videos||[]).map(v=>\`
     <li>
-      <a href="\${v.url}" target="_blank">\${escapeHtml(v.title)}</a>
+      <a href="\${v.url}" target="_blank">\${esc(v.title)}</a>
       <div><small>\${v.publishedAt||""}</small></div>
     </li>\`).join("") || "<li><small>無結果</small></li>";
 }
@@ -92,75 +92,141 @@ mcp.registerResource(
 );
 
 /* ---------------- Schemas ---------------- */
-const listSchema = z.object({ limit: z.number().int().min(1).max(500).optional() });
-const searchSchema = z.object({ query: z.string().min(1), limit: z.number().int().min(1).max(200).optional() });
+const listSchema = z.object({
+  limit: z.number().int().min(1).max(500).optional()
+});
+
+const searchSchema = z.object({
+  query: z.string().min(1),
+  limit: z.number().int().min(1).max(200).optional()
+});
 
 /* ---------------- Helpers ---------------- */
-async function fetchIndex(limit){
-  const url=new URL(`${CF_WORKER_BASE_URL}/my-channel/videos`);
-  if(limit) url.searchParams.set("limit",String(limit));
-  const r=await fetch(url.toString(),{headers:{Accept:"application/json"}});
-  const j=await r.json();
-  if(!r.ok) throw new Error("Worker error");
-  return j;
+async function fetchIndex(limit) {
+  const url = new URL(`${CF_WORKER_BASE_URL}/my-channel/videos`);
+  if (limit) url.searchParams.set("limit", String(limit));
+
+  const res = await fetch(url.toString(), {
+    headers: {
+      Accept: "application/json",
+      "User-Agent": "Mozilla/5.0"
+    }
+  });
+
+  const text = await res.text();
+  if (!res.ok) {
+    throw new Error(`Worker error ${res.status}: ${text.slice(0, 300)}`);
+  }
+  return JSON.parse(text);
 }
-const norm=v=>({
-  videoId:String(v.videoId||""),
-  title:String(v.title||""),
-  url:String(v.url||`https://www.youtube.com/watch?v=${v.videoId||""}`),
-  publishedAt:v.publishedAt?String(v.publishedAt):""
-});
+
+function normalize(v) {
+  return {
+    videoId: String(v.videoId || ""),
+    title: String(v.title || ""),
+    url: String(v.url || `https://www.youtube.com/watch?v=${v.videoId || ""}`),
+    publishedAt: v.publishedAt ? String(v.publishedAt) : ""
+  };
+}
 
 /* ---------------- Tools ---------------- */
 mcp.registerTool(
   "list_videos",
-  { title:"List Videos", inputSchema:listSchema, _meta:{ "openai/outputTemplate":TEMPLATE_URI }},
-  async({limit})=>{
-    const L=limit??30;
-    const idx=await fetchIndex(L);
-    const videos=(idx.videos||[]).slice(0,L).map(norm);
+  {
+    title: "List Videos",
+    inputSchema: listSchema,
+    _meta: { "openai/outputTemplate": TEMPLATE_URI }
+  },
+  async ({ limit }) => {
+    const L = limit ?? 30;
+    const idx = await fetchIndex(L);
+    const videos = (idx.videos || []).slice(0, L).map(normalize);
+
     return {
-      content:[{type:"text",text:`Fetched ${videos.length} videos`}],
-      structuredContent:{ ...idx, videos },
-      _meta:{ mode:"LIST" }
+      content: [{ type: "text", text: `Fetched ${videos.length} videos` }],
+      structuredContent: {
+        channelId: String(idx.channelId || ""),
+        channelTitle: String(idx.channelTitle || ""),
+        totalVideos: Number(idx.totalVideos || 0),
+        fetchedAt: String(idx.fetchedAt || ""),
+        cachedAt: String(idx.cachedAt || ""),
+        videos
+      },
+      _meta: { mode: "LIST" }
     };
   }
 );
 
 mcp.registerTool(
   "search_videos",
-  { title:"Search Videos", inputSchema:searchSchema, _meta:{ "openai/outputTemplate":TEMPLATE_URI }},
-  async({query,limit})=>{
-    const L=limit??30;
-    const idx=await fetchIndex(500);
-    const q=query.toLowerCase();
-    const videos=(idx.videos||[]).filter(v=>String(v.title||"").toLowerCase().includes(q)).slice(0,L).map(norm);
+  {
+    title: "Search Videos",
+    inputSchema: searchSchema,
+    _meta: { "openai/outputTemplate": TEMPLATE_URI }
+  },
+  async ({ query, limit }) => {
+    const L = limit ?? 30;
+    const idx = await fetchIndex(500);
+    const q = query.toLowerCase();
+
+    const videos = (idx.videos || [])
+      .filter(v => String(v.title || "").toLowerCase().includes(q))
+      .slice(0, L)
+      .map(normalize);
+
     return {
-      content:[{type:"text",text:`Search "${query}" → ${videos.length} results`}],
-      structuredContent:{ ...idx, videos },
-      _meta:{ mode:"SEARCH", query }
+      content: [{ type: "text", text: `Search "${query}" → ${videos.length} results` }],
+      structuredContent: {
+        channelId: String(idx.channelId || ""),
+        channelTitle: String(idx.channelTitle || ""),
+        totalVideos: Number(idx.totalVideos || 0),
+        fetchedAt: String(idx.fetchedAt || ""),
+        cachedAt: String(idx.cachedAt || ""),
+        videos
+      },
+      _meta: { mode: "SEARCH", query }
     };
   }
 );
 
 /* ---------------- HTTP ---------------- */
-const transport=new StreamableHTTPServerTransport({path:"/mcp"});
+const transport = new StreamableHTTPServerTransport({ path: "/mcp" });
 await mcp.connect(transport);
 
-createServer((req,res)=>{
-  if(req.method==="GET"&&req.url==="/"){res.end("MCP server running");return;}
-  if(req.url?.startsWith("/mcp")) return transport.handleRequest(req,res);
-  res.statusCode=404;res.end("Not Found");
-}).listen(PORT,()=>console.log("Listening",PORT));
-if (req.method === "GET" && req.url === "/debug/worker") {
-  try {
-    const r = await fetch("https://lingering-tooth-6667.gn00396084.workers.dev/my-channel/videos?limit=3");
-    const text = await r.text();
-    res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
-    res.end(JSON.stringify({ ok: true, status: r.status, bodyPreview: text.slice(0, 500) }, null, 2));
-  } catch (e) {
-    res.writeHead(500, { "Content-Type": "application/json; charset=utf-8" });
-    res.end(JSON.stringify({ ok: false, error: String(e?.message || e) }, null, 2));
+createServer(async (req, res) => {
+  // health
+  if (req.method === "GET" && req.url === "/") {
+    res.writeHead(200, { "Content-Type": "text/plain; charset=utf-8" });
+    res.end("MCP server running");
+    return;
   }
-  return;
-}
+
+  // debug: Railway -> Worker
+  if (req.method === "GET" && req.url === "/debug/worker") {
+    try {
+      const r = await fetch(`${CF_WORKER_BASE_URL}/my-channel/videos?limit=3`);
+      const t = await r.text();
+      res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+      res.end(JSON.stringify({
+        ok: true,
+        status: r.status,
+        bodyPreview: t.slice(0, 500)
+      }, null, 2));
+    } catch (e) {
+      res.writeHead(500, { "Content-Type": "application/json; charset=utf-8" });
+      res.end(JSON.stringify({ ok: false, error: String(e) }, null, 2));
+    }
+    return;
+  }
+
+  // MCP
+  if (req.url?.startsWith("/mcp")) {
+    return transport.handleRequest(req, res);
+  }
+
+  res.writeHead(404);
+  res.end("Not Found");
+}).listen(PORT, () => {
+  console.log("Listening on", PORT);
+  console.log("MCP endpoint: /mcp");
+});
