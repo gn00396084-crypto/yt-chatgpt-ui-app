@@ -1,43 +1,29 @@
-// mcp.resources.js (FINAL with debug exports)
-// Node/Railway friendly (readFileSync)
-// 3 UI widgets via ui://widget/*
-// Includes: mimeType + widgetCSP + widgetDomain + widgetType/widgetId
-// Exports: registerResources, debugListResources, debugInspectHtml
+// mcp.resources.js (FINAL)
 
 import { readFileSync } from "node:fs";
 
-/* =========================
- * Unique App ID (reverse-domain)
- * ========================= */
+/** ====== Unique App ID (用你 GitHub account) ====== */
 export const APP_ID = "io.github.gn00396084-crypto.ytfinder";
 
-/* =========================
- * UI Widget URIs (MUST be ui://widget/*)
- * ========================= */
+/** ====== UI Widget URIs (必須 ui://widget) ====== */
 export const HOME_URI = "ui://widget/youtube-finder-home.html";
 export const SEARCH_URI = "ui://widget/youtube-finder-search.html";
 export const VIDEOS_URI = "ui://widget/youtube-finder-videos.html";
 
-/* =========================
- * Skybridge mime
- * ========================= */
+/** ====== Skybridge mime ====== */
 export const SKYBRIDGE_MIME = "text/html+skybridge";
 
-/* =========================
- * Widget CSP + Domain (important for warnings)
- * ========================= */
+/** ====== Widget CSP / Domain (俾審核器/檢視器用) ====== */
 export const WIDGET_CSP = {
   connect_domains: ["https://www.googleapis.com"],
   resource_domains: ["https://i.ytimg.com"],
   frame_domains: []
 };
 
-// Some validators expect this field to exist; safe to include.
+// 有啲檢視器會期待呢個欄位存在（加咗無壞）
 export const WIDGET_DOMAIN = "https://chatgpt.com";
 
-/* =========================
- * Local HTML files (same folder as this file)
- * ========================= */
+/** ====== Local HTML files (同 repo root) ====== */
 const UI_FILES = {
   home: "./ui-index.html",
   search: "./ui-search.html",
@@ -50,9 +36,9 @@ function loadUI(relPath) {
 }
 
 function makeUiContent({ uri, html, pageKey, description }) {
-  // ✅ Unique per page (use dot, no colon)
+  // ✅ 唔用 ":"，用 "."，而且每頁唯一
   const widgetType = `${APP_ID}.${pageKey}`;
-  const widgetId = `${APP_ID}.${pageKey}`;
+  const widgetId = widgetType;
 
   return {
     uri,
@@ -71,7 +57,7 @@ function makeUiContent({ uri, html, pageKey, description }) {
 }
 
 function makeResourceMeta({ title, description, pageKey }) {
-  // Some tooling reads meta from resource metadata too → set both places.
+  // 有啲工具會讀「resource metadata」→ 我哋兩邊都 set（最穩）
   return {
     title,
     mimeType: SKYBRIDGE_MIME,
@@ -87,9 +73,7 @@ function makeResourceMeta({ title, description, pageKey }) {
   };
 }
 
-/* =========================
- * Register 3 UI resources
- * ========================= */
+/** ====== Register resources ====== */
 export function registerResources(mcp) {
   const UI_HOME_HTML = loadUI(UI_FILES.home);
   const UI_SEARCH_HTML = loadUI(UI_FILES.search);
@@ -156,9 +140,7 @@ export function registerResources(mcp) {
   );
 }
 
-/* =========================
- * Debug exports (for /debug/* endpoints)
- * ========================= */
+/** ====== Debug exports (俾 /debug/* 用) ====== */
 export function debugListResources() {
   return [
     { key: "home", uri: HOME_URI, expectedType: `${APP_ID}.home` },
@@ -179,9 +161,7 @@ export function debugInspectHtml(key) {
   const bodyType =
     /<body[^>]*\sdata-widget-type=["']([^"']+)["'][^>]*>/i.exec(html)?.[1] ?? null;
 
-  const scriptTypes = [...html.matchAll(/<script\b[^>]*\stype=["']([^"']+)["'][^>]*>/gi)].map(
-    (m) => m[1]
-  );
+  const scriptTypes = [...html.matchAll(/<script\b[^>]*\stype=["']([^"']+)["'][^>]*>/gi)].map(m => m[1]);
 
   return {
     key,
@@ -190,4 +170,6 @@ export function debugInspectHtml(key) {
     appType,
     bodyType,
     scriptTypes,
-    hasModuleScript: script
+    hasModuleScript: scriptTypes.includes("module")
+  };
+}
