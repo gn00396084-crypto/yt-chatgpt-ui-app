@@ -1,9 +1,28 @@
 <!doctype html>
-<html>
+<html lang="zh-HK">
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
+
+  <!-- ✅ Required: CSP (allow this page + OpenAI UI bridge + your Worker/API over https) -->
+  <meta http-equiv="Content-Security-Policy"
+        content="
+          default-src 'self';
+          base-uri 'none';
+          frame-ancestors 'none';
+          form-action 'none';
+          object-src 'none';
+          script-src 'self' 'unsafe-inline';
+          style-src 'self' 'unsafe-inline';
+          img-src 'self' data: https:;
+          connect-src 'self' https:;
+        ">
+
+  <!-- ✅ Required: Unique widget/app type (must match across ALL ui://page/*.html) -->
+  <meta name="app:type" content="yt-chatgpt-ui-app"/>
+
   <title>YouTube Finder</title>
+
   <style>
     :root{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
     body{margin:0;padding:14px;background:#fff}
@@ -17,7 +36,9 @@
     .pill{display:inline-block;border:1px solid rgba(0,0,0,.12);border-radius:999px;padding:6px 10px;font-size:12px}
   </style>
 </head>
-<body>
+
+<!-- ✅ Extra insurance: some validators also look for type on body -->
+<body data-widget-type="yt-chatgpt-ui-app">
   <div class="card">
     <h2 style="margin:0 0 6px">YouTube Finder</h2>
     <div class="muted">選擇功能頁面</div>
@@ -40,26 +61,46 @@
     <small id="status">等待操作…</small>
   </div>
 
-<script>
-async function callTool(n,a){ return window.openai.callTool(n,a); }
+  <script>
+    const WIDGET_TYPE = "yt-chatgpt-ui-app";
 
-document.getElementById("goLatest").onclick = async () => {
-  document.getElementById("status").textContent = "載入最新影片…";
-  await callTool("list_videos", { limit: 30 }); // 由工具 outputTemplate 轉去 videos page render
-};
+    function setStatus(msg){ document.getElementById("status").textContent = msg; }
 
-document.getElementById("goSearch").onclick = async () => {
-  document.getElementById("status").textContent = "開啟搜尋頁…";
-  // 最穩做法：call 一個輕量工具去渲染 search page（或你亦可直接用 list_videos 轉頁再由頁面提供搜尋）
-  await callTool("open_search_page", {});
-};
+    async function callTool(name, args){
+      if (!window.openai?.callTool) {
+        throw new Error("openai bridge not available (window.openai.callTool missing)");
+      }
+      return window.openai.callTool(name, args);
+    }
 
-(function(){
-  // 若有 toolOutput（例如由 open_search_page 或其他工具帶入），可以做提示
-  if (window.openai?.toolOutput) {
-    document.getElementById("status").textContent = "已收到工具輸出。";
-  }
-})();
-</script>
+    document.getElementById("goLatest").addEventListener("click", async () => {
+      try {
+        setStatus("載入最新影片…");
+        await callTool("list_videos", { limit: 30 }); // tool outputTemplate should route to videos page render
+        setStatus("已發送請求。");
+      } catch (e) {
+        setStatus("錯誤：" + (e?.message || String(e)));
+      }
+    });
+
+    document.getElementById("goSearch").addEventListener("click", async () => {
+      try {
+        setStatus("開啟搜尋頁…");
+        await callTool("open_search_page", {});
+        setStatus("已發送請求。");
+      } catch (e) {
+        setStatus("錯誤：" + (e?.message || String(e)));
+      }
+    });
+
+    (function(){
+      // Optional: show hint if toolOutput exists
+      if (window.openai?.toolOutput) {
+        setStatus("已收到工具輸出。");
+      }
+      // Expose type for debugging
+      window.__WIDGET_TYPE__ = WIDGET_TYPE;
+    })();
+  </script>
 </body>
 </html>
