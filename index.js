@@ -1,12 +1,9 @@
-// index.js (FINAL with /debug/*)
-// Node >= 20, ESM
-
 import { createServer } from "node:http";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 
-import { registerAll } from "./mcp.registerAll.js"; // 你原本 registerAll 所在檔案
-import { debugListResources, debugInspectHtml } from "./mcp.resources.js";
+import { registerResources, debugListResources, debugInspectHtml } from "./mcp.resources.js";
+import { registerTools } from "./mcp.tools.js";
 
 const PORT = Number(process.env.PORT || 3000);
 
@@ -19,21 +16,21 @@ function json(res, obj, status = 200) {
 }
 
 function okDebugToken(url) {
-  // Optional: 設定 Railway env: DEBUG_TOKEN
   if (!process.env.DEBUG_TOKEN) return true;
   return url.searchParams.get("token") === process.env.DEBUG_TOKEN;
 }
 
-async function main() {
-  const mcp = new McpServer({
-    name: "yt-chatgpt-ui-app",
-    version: "1.0.0",
-  });
+// ✅ registerAll 就地定義（唔需要 mcp.registerAll.js）
+function registerAll(mcp, env) {
+  registerResources(mcp);
+  registerTools(mcp, env);
+}
 
-  // 註冊 resources + tools
+async function main() {
+  const mcp = new McpServer({ name: "yt-chatgpt-ui-app", version: "1.0.0" });
+
   registerAll(mcp, process.env);
 
-  // MCP transport
   const transport = new StreamableHTTPServerTransport();
   await mcp.connect(transport);
 
@@ -41,27 +38,18 @@ async function main() {
     const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
     const path = url.pathname.replace(/\/+$/, "") || "/";
 
-    // -------------------------
-    // ✅ DEBUG ROUTES (must be BEFORE any Not Found)
-    // -------------------------
+    // ✅ debug endpoints（一定要放 Not Found 之前）
     if (path === "/debug/resources") {
       if (!okDebugToken(url)) return json(res, { error: "unauthorized" }, 401);
       return json(res, { ok: true, resources: debugListResources() });
     }
-
-    if (path.startsWith("/debug/ui")) {
+    if (path.startsWith("/debug/ui/")) {
       if (!okDebugToken(url)) return json(res, { error: "unauthorized" }, 401);
-      // /debug/ui/home | /debug/ui/search | /debug/ui/videos
-      const key = path.split("/").pop(); // "home" | "search" | "videos" | "ui"
-      if (!key || key === "ui") {
-        return json(res, { error: "usage: /debug/ui/home|search|videos" }, 400);
-      }
+      const key = path.split("/").pop();
       return json(res, { ok: true, inspect: debugInspectHtml(key) });
     }
 
-    // -------------------------
-    // MCP handler (all other paths)
-    // -------------------------
+    // MCP handler
     try {
       await transport.handleRequest(req, res);
     } catch (e) {
