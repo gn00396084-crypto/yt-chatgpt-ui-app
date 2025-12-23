@@ -22,7 +22,7 @@ const SKYBRIDGE_MIME = "text/html+skybridge";
  * 👉 請改成你自己唯一的字串（例如你的 GitHub / domain）
  * =========================
  */
-const TYPE_PREFIX = "com.yourname.ytfinder"; // ← 務必改成你自己
+const TYPE_PREFIX = "io.github.gn00396084-crypto.ytfinder"; // ← 務必改成你自己
 
 /**
  * =========================
