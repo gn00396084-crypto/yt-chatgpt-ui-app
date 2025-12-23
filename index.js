@@ -1,15 +1,6 @@
 // index.js — FINAL (UI + API + MCP-ready, Railway-ready)
 // Env required:
 //   CF_WORKER_BASE_URL = https://xxx.workers.dev
-//
-// Routes:
-//   GET  /            -> redirect to /ui/videos
-//   GET  /ui/videos   -> serve ui-videos.html
-//   GET  /ui/search   -> serve ui-search.html (optional)
-//   GET  /api/videos  -> forward to CF worker /my-channel/videos (normalized, timeout)
-//   GET  /api/search?q= -> server-side filter (normalized, timeout)
-//   GET  /health      -> healthcheck
-//   POST /mcp         -> MCP streamable HTTP transport
 
 import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
@@ -40,17 +31,38 @@ function withSecurityHeaders(res, contentType = "text/html; charset=utf-8") {
   res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
   res.setHeader("Cross-Origin-Resource-Policy", "same-origin");
 
+  /**
+   * CSP notes:
+   * - UI uses inline <style>/<script> => allow 'unsafe-inline' for style/script on self
+   * - YouTube embed uses youtube-nocookie + youtube + i.ytimg thumbnails
+   * - Some videos may hit googlevideo streams, and (sometimes) gstatic
+   * - We keep it reasonably tight while avoiding common embed breakage
+   */
   const csp = [
     "default-src 'self'",
     "base-uri 'self'",
     "object-src 'none'",
     "frame-ancestors 'self'",
     "form-action 'self'",
-    "img-src 'self' data: https:",
+
+    // Thumbnails + potential YT related images
+    "img-src 'self' data: https: https://i.ytimg.com https://ytimg.com",
+
+    // Inline UI
     "style-src 'self' 'unsafe-inline'",
     "script-src 'self' 'unsafe-inline'",
+
+    // API calls (your site -> CF worker)
     "connect-src 'self' https:",
+
+    // Allow embedding YouTube
     "frame-src https://www.youtube.com https://www.youtube-nocookie.com",
+
+    // Allow media loads if browser treats some video/audio as media-src
+    "media-src 'self' https: blob:",
+
+    // Some browsers use child-src for frames (legacy)
+    "child-src https://www.youtube.com https://www.youtube-nocookie.com",
   ].join("; ");
 
   res.setHeader("Content-Security-Policy", csp);
@@ -131,7 +143,6 @@ function pickVideoFields(v) {
 async function fetchWorkerJson(workerPath) {
   const url = new URL(workerPath, CF_WORKER_BASE_URL).toString();
 
-  // 10s timeout
   const controller = new AbortController();
   const t = setTimeout(() => controller.abort(), 10000);
 
@@ -207,12 +218,10 @@ const server = createServer(async (req, res) => {
     const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
     const pathname = url.pathname;
 
-    // MCP endpoint
     if (pathname === "/mcp") {
       return transport.handleRequest(req, res);
     }
 
-    // UI routes
     if (pathname === "/") {
       res.statusCode = 302;
       res.setHeader("Location", "/ui/videos");
@@ -225,11 +234,9 @@ const server = createServer(async (req, res) => {
     }
 
     if (pathname === "/ui/search") {
-      // optional; you can keep your existing file
       return await sendFile(res, 200, "ui-search.html");
     }
 
-    // API: videos (normalized, timeout)
     if (pathname === "/api/videos") {
       const { ok, status, json } = await fetchWorkerJson("/my-channel/videos");
       if (!ok) return sendJson(res, status, json);
@@ -241,10 +248,8 @@ const server = createServer(async (req, res) => {
       return sendJson(res, 200, { items });
     }
 
-    // API: search (normalized, timeout)
     if (pathname === "/api/search") {
       const q = url.searchParams.get("q") || "";
-
       const { ok, status, json } = await fetchWorkerJson("/my-channel/videos");
       if (!ok) return sendJson(res, status, json);
 
@@ -260,7 +265,6 @@ const server = createServer(async (req, res) => {
       return sendJson(res, 200, { items: filtered.slice(0, 100), q });
     }
 
-    // Health
     if (pathname === "/health") {
       return sendJson(res, 200, { ok: true, service: "yt-ui-mcp", time: new Date().toISOString() });
     }
@@ -274,6 +278,4 @@ const server = createServer(async (req, res) => {
 
 server.listen(PORT, () => {
   console.log(`Server listening on http://localhost:${PORT}`);
-  console.log(`UI: /ui/videos`);
-  console.log(`API: /api/videos , /api/search?q=...`);
 });
