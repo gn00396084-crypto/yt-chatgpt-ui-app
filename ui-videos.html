@@ -1,0 +1,83 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>YouTube Finder - Videos</title>
+  <style>
+    :root{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+    body{margin:0;padding:12px}
+    .card{border:1px solid rgba(0,0,0,.12);border-radius:12px;padding:12px;max-width:980px;margin:0 auto}
+    .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+    button{padding:10px 12px;border-radius:10px;border:1px solid rgba(0,0,0,.18);background:#fff;cursor:pointer}
+    small{opacity:.7}
+    ul{list-style:none;padding:0;margin:12px 0 0}
+    li{padding:10px 0;border-top:1px solid rgba(0,0,0,.08)}
+    a{text-decoration:none}a:hover{text-decoration:underline}
+    .meta{display:flex;gap:10px;flex-wrap:wrap}
+    .pill{display:inline-block;border:1px solid rgba(0,0,0,.12);border-radius:999px;padding:4px 10px;font-size:12px}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="row" style="justify-content:space-between">
+      <div>
+        <div style="font-weight:700">最新影片</div>
+        <small id="sub">—</small>
+      </div>
+      <div class="row">
+        <button id="home">🏠 首頁</button>
+        <button id="search">🔎 去搜尋</button>
+        <button id="reload">↻ 重新載入</button>
+      </div>
+    </div>
+
+    <div style="margin-top:10px" class="meta" id="meta"></div>
+    <ul id="list"></ul>
+  </div>
+
+<script>
+function esc(s){return String(s).replace(/[&<>"']/g,c=>({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]))}
+async function callTool(n,a){ return window.openai.callTool(n,a); }
+
+function render(payload){
+  const info = payload?.structuredContent || {};
+  const meta = payload?._meta || {};
+  const videos = info.videos || [];
+
+  document.getElementById("sub").textContent =
+    `模式：${meta.mode || "LIST"} ｜ 顯示 ${videos.length} ｜ 總數 ${info.totalVideos ?? 0}`;
+
+  const metaBox = document.getElementById("meta");
+  metaBox.innerHTML = [
+    `<span class="pill">channelTitle: ${esc(info.channelTitle || "")}</span>`,
+    `<span class="pill">channelId: ${esc(info.channelId || "")}</span>`,
+    `<span class="pill">fetchedAt: ${esc(info.fetchedAt || "")}</span>`,
+    `<span class="pill">cachedAt: ${esc(info.cachedAt || "")}</span>`
+  ].join("");
+
+  const list = document.getElementById("list");
+  list.innerHTML = videos.map(v => `
+    <li>
+      <a href="${esc(v.url)}" target="_blank">${esc(v.title)}</a>
+      <div><small>${esc(v.publishedAt || "")}</small></div>
+    </li>
+  `).join("") || `<li><small>無結果</small></li>`;
+}
+
+document.getElementById("reload").onclick = async () => {
+  render(await callTool("list_videos", { limit: 30 }));
+};
+document.getElementById("search").onclick = async () => {
+  await callTool("open_search_page", {});
+};
+document.getElementById("home").onclick = async () => {
+  await callTool("open_home_page", {});
+};
+
+(function(){
+  if(window.openai?.toolOutput) render(window.openai.toolOutput);
+})();
+</script>
+</body>
+</html>
