@@ -1,50 +1,56 @@
-// mcp.resources.js (FINAL)
+// mcp.resources.js (FINAL with debug exports)
+// Node/Railway friendly (readFileSync)
+// 3 UI widgets via ui://widget/*
+// Includes: mimeType + widgetCSP + widgetDomain + widgetType/widgetId
+// Exports: registerResources, debugListResources, debugInspectHtml
 
-// ✅ One place to set your globally-unique app id / namespace
-// Use reverse-domain style. Example based on your GitHub account:
-const APP_ID = "io.github.gn00396084-crypto.ytfinder";
+import { readFileSync } from "node:fs";
 
-// ✅ UI Widget URIs (MUST be ui://widget/*)
+/* =========================
+ * Unique App ID (reverse-domain)
+ * ========================= */
+export const APP_ID = "io.github.gn00396084-crypto.ytfinder";
+
+/* =========================
+ * UI Widget URIs (MUST be ui://widget/*)
+ * ========================= */
 export const HOME_URI = "ui://widget/youtube-finder-home.html";
 export const SEARCH_URI = "ui://widget/youtube-finder-search.html";
 export const VIDEOS_URI = "ui://widget/youtube-finder-videos.html";
 
-import { readFileSync } from "node:fs";
+/* =========================
+ * Skybridge mime
+ * ========================= */
+export const SKYBRIDGE_MIME = "text/html+skybridge";
 
-const SKYBRIDGE_MIME = "text/html+skybridge";
-
-// ✅ Required by Apps SDK UI resource metadata
-// Put ONLY what you really need.
-// - connect_domains: allow fetch/XHR to these domains (widget-side)
-// - resource_domains: allow loading images/scripts/css from these domains
-// - frame_domains: allow embedding iframes from these domains (usually empty)
-const WIDGET_CSP = {
-  connect_domains: [
-    // add your own API domain here ONLY if the widget fetches directly from it
-    "https://www.googleapis.com",
-    "https://chatgpt.com"
-  ],
-  resource_domains: [
-    "https://i.ytimg.com"
-  ],
+/* =========================
+ * Widget CSP + Domain (important for warnings)
+ * ========================= */
+export const WIDGET_CSP = {
+  connect_domains: ["https://www.googleapis.com"],
+  resource_domains: ["https://i.ytimg.com"],
   frame_domains: []
 };
 
-// ✅ Official examples include widgetDomain; missing it often triggers the “CSP not set” warning.
-// Use chatgpt.com unless you were told otherwise by docs/tooling.
-const WIDGET_DOMAIN = "https://chatgpt.com";
+// Some validators expect this field to exist; safe to include.
+export const WIDGET_DOMAIN = "https://chatgpt.com";
+
+/* =========================
+ * Local HTML files (same folder as this file)
+ * ========================= */
+const UI_FILES = {
+  home: "./ui-index.html",
+  search: "./ui-search.html",
+  videos: "./ui-videos.html"
+};
 
 function loadUI(relPath) {
   const url = new URL(relPath, import.meta.url);
   return readFileSync(url, "utf8");
 }
 
-/**
- * Build ONE skybridge HTML resource content entry
- * NOTE: the important part is contents[0]._meta
- */
 function makeUiContent({ uri, html, pageKey, description }) {
-  // You can keep per-page “type/id” for debugging; MUST stay stable.
+  // ✅ Unique per page (use dot, no colon)
   const widgetType = `${APP_ID}.${pageKey}`;
   const widgetId = `${APP_ID}.${pageKey}`;
 
@@ -54,47 +60,40 @@ function makeUiContent({ uri, html, pageKey, description }) {
     mimeType: SKYBRIDGE_MIME,
     text: html,
     _meta: {
-      "openai/widgetPrefersBorder": true,
-      "openai/widgetDescription": description,
-
-      // ✅ These two are the key ones for the red warning
-      "openai/widgetDomain": WIDGET_DOMAIN,
       "openai/widgetCSP": WIDGET_CSP,
-
-      // (Optional / safe) keep if your inspector uses them
+      "openai/widgetDomain": WIDGET_DOMAIN,
       "openai/widgetType": widgetType,
-      "openai/widgetId": widgetId
+      "openai/widgetId": widgetId,
+      "openai/widgetDescription": description,
+      "openai/widgetPrefersBorder": true
     }
   };
 }
 
-/**
- * Resource metadata (3rd arg) — keep mimeType here too.
- * Some tooling reads meta here, some reads from contents[0]._meta; we set both.
- */
 function makeResourceMeta({ title, description, pageKey }) {
+  // Some tooling reads meta from resource metadata too → set both places.
   return {
     title,
     mimeType: SKYBRIDGE_MIME,
     description,
     _meta: {
-      "openai/widgetPrefersBorder": true,
-      "openai/widgetDescription": description,
-      "openai/widgetDomain": WIDGET_DOMAIN,
       "openai/widgetCSP": WIDGET_CSP,
-
-      // optional
+      "openai/widgetDomain": WIDGET_DOMAIN,
       "openai/widgetType": `${APP_ID}.${pageKey}`,
-      "openai/widgetId": `${APP_ID}.${pageKey}`
+      "openai/widgetId": `${APP_ID}.${pageKey}`,
+      "openai/widgetDescription": description,
+      "openai/widgetPrefersBorder": true
     }
   };
 }
 
+/* =========================
+ * Register 3 UI resources
+ * ========================= */
 export function registerResources(mcp) {
-  // files are in repo root (adjust paths if yours differ)
-  const UI_HOME_HTML = loadUI("./ui-index.html");
-  const UI_SEARCH_HTML = loadUI("./ui-search.html");
-  const UI_VIDEOS_HTML = loadUI("./ui-videos.html");
+  const UI_HOME_HTML = loadUI(UI_FILES.home);
+  const UI_SEARCH_HTML = loadUI(UI_FILES.search);
+  const UI_VIDEOS_HTML = loadUI(UI_FILES.videos);
 
   mcp.registerResource(
     "youtube-finder-home",
@@ -156,3 +155,39 @@ export function registerResources(mcp) {
     })
   );
 }
+
+/* =========================
+ * Debug exports (for /debug/* endpoints)
+ * ========================= */
+export function debugListResources() {
+  return [
+    { key: "home", uri: HOME_URI, expectedType: `${APP_ID}.home` },
+    { key: "search", uri: SEARCH_URI, expectedType: `${APP_ID}.search` },
+    { key: "videos", uri: VIDEOS_URI, expectedType: `${APP_ID}.videos` }
+  ];
+}
+
+export function debugInspectHtml(key) {
+  const rel = UI_FILES[key];
+  if (!rel) return { error: `unknown key: ${key}`, allowed: Object.keys(UI_FILES) };
+
+  const html = loadUI(rel);
+
+  const appType =
+    /<meta\s+name=["']app:type["']\s+content=["']([^"']+)["']\s*\/?>/i.exec(html)?.[1] ?? null;
+
+  const bodyType =
+    /<body[^>]*\sdata-widget-type=["']([^"']+)["'][^>]*>/i.exec(html)?.[1] ?? null;
+
+  const scriptTypes = [...html.matchAll(/<script\b[^>]*\stype=["']([^"']+)["'][^>]*>/gi)].map(
+    (m) => m[1]
+  );
+
+  return {
+    key,
+    file: rel,
+    expectedType: `${APP_ID}.${key}`,
+    appType,
+    bodyType,
+    scriptTypes,
+    hasModuleScript: script
