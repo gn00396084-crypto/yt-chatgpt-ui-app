@@ -1,0 +1,65 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>YouTube Finder</title>
+  <style>
+    :root{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+    body{margin:0;padding:14px;background:#fff}
+    .card{border:1px solid rgba(0,0,0,.12);border-radius:14px;padding:14px;max-width:900px;margin:0 auto}
+    .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+    button{padding:10px 12px;border-radius:12px;border:1px solid rgba(0,0,0,.18);background:#fff;cursor:pointer}
+    button.primary{border-color:rgba(0,0,0,.3)}
+    small{opacity:.7}
+    .muted{opacity:.7}
+    .sp{height:10px}
+    .pill{display:inline-block;border:1px solid rgba(0,0,0,.12);border-radius:999px;padding:6px 10px;font-size:12px}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h2 style="margin:0 0 6px">YouTube Finder</h2>
+    <div class="muted">選擇功能頁面</div>
+
+    <div class="sp"></div>
+
+    <div class="row">
+      <button id="goLatest" class="primary">📺 最新影片（List）</button>
+      <button id="goSearch">🔎 搜尋影片（Search）</button>
+    </div>
+
+    <div class="sp"></div>
+
+    <div class="row">
+      <span class="pill">Tips：Search 會先抓 500 條索引再本地過濾</span>
+      <span class="pill">若無結果，先試 /debug/worker</span>
+    </div>
+
+    <div class="sp"></div>
+    <small id="status">等待操作…</small>
+  </div>
+
+<script>
+async function callTool(n,a){ return window.openai.callTool(n,a); }
+
+document.getElementById("goLatest").onclick = async () => {
+  document.getElementById("status").textContent = "載入最新影片…";
+  await callTool("list_videos", { limit: 30 }); // 由工具 outputTemplate 轉去 videos page render
+};
+
+document.getElementById("goSearch").onclick = async () => {
+  document.getElementById("status").textContent = "開啟搜尋頁…";
+  // 最穩做法：call 一個輕量工具去渲染 search page（或你亦可直接用 list_videos 轉頁再由頁面提供搜尋）
+  await callTool("open_search_page", {});
+};
+
+(function(){
+  // 若有 toolOutput（例如由 open_search_page 或其他工具帶入），可以做提示
+  if (window.openai?.toolOutput) {
+    document.getElementById("status").textContent = "已收到工具輸出。";
+  }
+})();
+</script>
+</body>
+</html>
