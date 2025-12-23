@@ -1,9 +1,28 @@
 <!doctype html>
-<html>
+<html lang="zh-HK">
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
+
+  <!-- ✅ Required: CSP -->
+  <meta http-equiv="Content-Security-Policy"
+        content="
+          default-src 'self';
+          base-uri 'none';
+          frame-ancestors 'none';
+          form-action 'none';
+          object-src 'none';
+          script-src 'self' 'unsafe-inline';
+          style-src 'self' 'unsafe-inline';
+          img-src 'self' data: https:;
+          connect-src 'self' https:;
+        ">
+
+  <!-- ✅ Required: Unique widget/app type (must match across ALL ui://page/*.html) -->
+  <meta name="app:type" content="yt-chatgpt-ui-app"/>
+
   <title>YouTube Finder - Videos</title>
+
   <style>
     :root{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
     body{margin:0;padding:12px}
@@ -18,7 +37,9 @@
     .pill{display:inline-block;border:1px solid rgba(0,0,0,.12);border-radius:999px;padding:4px 10px;font-size:12px}
   </style>
 </head>
-<body>
+
+<!-- ✅ Extra insurance: some validators also look for type on body -->
+<body data-widget-type="yt-chatgpt-ui-app">
   <div class="card">
     <div class="row" style="justify-content:space-between">
       <div>
@@ -36,48 +57,81 @@
     <ul id="list"></ul>
   </div>
 
-<script>
-function esc(s){return String(s).replace(/[&<>"']/g,c=>({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]))}
-async function callTool(n,a){ return window.openai.callTool(n,a); }
+  <script>
+    const WIDGET_TYPE = "yt-chatgpt-ui-app";
 
-function render(payload){
-  const info = payload?.structuredContent || {};
-  const meta = payload?._meta || {};
-  const videos = info.videos || [];
+    function esc(s){
+      return String(s).replace(/[&<>"']/g, c => ({
+        "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
+      }[c]));
+    }
 
-  document.getElementById("sub").textContent =
-    `模式：${meta.mode || "LIST"} ｜ 顯示 ${videos.length} ｜ 總數 ${info.totalVideos ?? 0}`;
+    async function callTool(n, a){
+      if (!window.openai?.callTool) {
+        throw new Error("openai bridge not available (window.openai.callTool missing)");
+      }
+      return window.openai.callTool(n, a);
+    }
 
-  const metaBox = document.getElementById("meta");
-  metaBox.innerHTML = [
-    `<span class="pill">channelTitle: ${esc(info.channelTitle || "")}</span>`,
-    `<span class="pill">channelId: ${esc(info.channelId || "")}</span>`,
-    `<span class="pill">fetchedAt: ${esc(info.fetchedAt || "")}</span>`,
-    `<span class="pill">cachedAt: ${esc(info.cachedAt || "")}</span>`
-  ].join("");
+    function render(payload){
+      const info = payload?.structuredContent || {};
+      const meta = payload?._meta || {};
+      const videos = info.videos || [];
 
-  const list = document.getElementById("list");
-  list.innerHTML = videos.map(v => `
-    <li>
-      <a href="${esc(v.url)}" target="_blank">${esc(v.title)}</a>
-      <div><small>${esc(v.publishedAt || "")}</small></div>
-    </li>
-  `).join("") || `<li><small>無結果</small></li>`;
-}
+      document.getElementById("sub").textContent =
+        `模式：${meta.mode || "LIST"} ｜ 顯示 ${videos.length} ｜ 總數 ${info.totalVideos ?? 0}`;
 
-document.getElementById("reload").onclick = async () => {
-  render(await callTool("list_videos", { limit: 30 }));
-};
-document.getElementById("search").onclick = async () => {
-  await callTool("open_search_page", {});
-};
-document.getElementById("home").onclick = async () => {
-  await callTool("open_home_page", {});
-};
+      const metaBox = document.getElementById("meta");
+      metaBox.innerHTML = [
+        `<span class="pill">channelTitle: ${esc(info.channelTitle || "")}</span>`,
+        `<span class="pill">channelId: ${esc(info.channelId || "")}</span>`,
+        `<span class="pill">fetchedAt: ${esc(info.fetchedAt || "")}</span>`,
+        `<span class="pill">cachedAt: ${esc(info.cachedAt || "")}</span>`
+      ].join("");
 
-(function(){
-  if(window.openai?.toolOutput) render(window.openai.toolOutput);
-})();
-</script>
+      const list = document.getElementById("list");
+      list.innerHTML = videos.map(v => `
+        <li>
+          <a href="${esc(v.url)}" target="_blank" rel="noopener noreferrer">${esc(v.title)}</a>
+          <div><small>${esc(v.publishedAt || "")}</small></div>
+        </li>
+      `).join("") || `<li><small>無結果</small></li>`;
+    }
+
+    async function reload(){
+      try {
+        const out = await callTool("list_videos", { limit: 30 });
+        render(out);
+      } catch (e) {
+        render({
+          structuredContent: { videos: [], totalVideos: 0, channelTitle: "", channelId: "", fetchedAt: "", cachedAt: "" },
+          _meta: { mode: "ERROR", error: e?.message || String(e), widgetType: WIDGET_TYPE }
+        });
+      }
+    }
+
+    document.getElementById("reload").addEventListener("click", reload);
+
+    document.getElementById("search").addEventListener("click", async () => {
+      await callTool("open_search_page", {});
+    });
+
+    document.getElementById("home").addEventListener("click", async () => {
+      await callTool("open_home_page", {});
+    });
+
+    (function(){
+      // expose type for debugging
+      window.__WIDGET_TYPE__ = WIDGET_TYPE;
+
+      if (window.openai?.toolOutput) {
+        render(window.openai.toolOutput);
+      } else {
+        // Optional: auto-load once if no toolOutput provided
+        // Comment out if you prefer manual reload
+        // reload();
+      }
+    })();
+  </script>
 </body>
 </html>
