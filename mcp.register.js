@@ -1,3 +1,4 @@
+// mcp.register.js
 import { registerResources } from "./mcp.resources.js";
 import { registerTools } from "./mcp.tools.js";
 
