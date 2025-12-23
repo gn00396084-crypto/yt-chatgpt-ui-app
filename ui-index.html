@@ -4,22 +4,11 @@
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
 
-  <!-- ✅ Required: CSP (allow this page + OpenAI UI bridge + your Worker/API over https) -->
   <meta http-equiv="Content-Security-Policy"
-        content="
-          default-src 'self';
-          base-uri 'none';
-          frame-ancestors 'none';
-          form-action 'none';
-          object-src 'none';
-          script-src 'self' 'unsafe-inline';
-          style-src 'self' 'unsafe-inline';
-          img-src 'self' data: https:;
-          connect-src 'self' https:;
-        ">
+        content="default-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'; object-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:;">
 
-  <!-- ✅ Required: Unique widget/app type (must match across ALL ui://page/*.html) -->
-  <meta name="app:type" content="yt-chatgpt-ui-app:home"/>
+  <!-- ✅ 必須：同 mcp.resources.js 的 widgetType 完全一致（而且唔用 :） -->
+  <meta name="app:type" content="com.yourname.ytfinder.home"/>
 
   <title>YouTube Finder</title>
 
@@ -37,8 +26,7 @@
   </style>
 </head>
 
-<!-- ✅ Extra insurance: some validators also look for type on body -->
-<body data-widget-type="yt-chatgpt-ui-app:home">
+<body data-widget-type="com.yourname.ytfinder.home">
   <div class="card">
     <h2 style="margin:0 0 6px">YouTube Finder</h2>
     <div class="muted">選擇功能頁面</div>
@@ -62,21 +50,20 @@
   </div>
 
   <script type="module">
-    const WIDGET_TYPE = "yt-chatgpt-ui-app";
+    // ✅ 同上面一致
+    const WIDGET_TYPE = "com.yourname.ytfinder.home";
 
     function setStatus(msg){ document.getElementById("status").textContent = msg; }
 
     async function callTool(name, args){
-      if (!window.openai?.callTool) {
-        throw new Error("openai bridge not available (window.openai.callTool missing)");
-      }
+      if (!window.openai?.callTool) throw new Error("openai bridge not available");
       return window.openai.callTool(name, args);
     }
 
     document.getElementById("goLatest").addEventListener("click", async () => {
       try {
         setStatus("載入最新影片…");
-        await callTool("list_videos", { limit: 30 }); // tool outputTemplate should route to videos page render
+        await callTool("list_videos", { limit: 30 });
         setStatus("已發送請求。");
       } catch (e) {
         setStatus("錯誤：" + (e?.message || String(e)));
@@ -94,11 +81,7 @@
     });
 
     (function(){
-      // Optional: show hint if toolOutput exists
-      if (window.openai?.toolOutput) {
-        setStatus("已收到工具輸出。");
-      }
-      // Expose type for debugging
+      if (window.openai?.toolOutput) setStatus("已收到工具輸出。");
       window.__WIDGET_TYPE__ = WIDGET_TYPE;
     })();
   </script>
