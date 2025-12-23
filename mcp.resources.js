@@ -1,53 +1,52 @@
 // mcp.resources.js (FINAL)
-// - Node/Railway friendly (readFileSync)
-// - 3 UI widgets via ui://widget/*
-// - Each resource includes: mimeType + openai/widgetCSP + openai/widgetType + openai/widgetId
-// - Debug helpers: debugListResources(), debugInspectHtml()
 
-import { readFileSync } from "node:fs";
+// ✅ One place to set your globally-unique app id / namespace
+// Use reverse-domain style. Example based on your GitHub account:
+const APP_ID = "io.github.gn00396084-crypto.ytfinder";
 
-/* =========================
- * UI Widget URIs (MUST be ui://widget)
- * ========================= */
+// ✅ UI Widget URIs (MUST be ui://widget/*)
 export const HOME_URI = "ui://widget/youtube-finder-home.html";
 export const SEARCH_URI = "ui://widget/youtube-finder-search.html";
 export const VIDEOS_URI = "ui://widget/youtube-finder-videos.html";
 
-/* =========================
- * Widget meta
- * ========================= */
-export const SKYBRIDGE_MIME = "text/html+skybridge";
+import { readFileSync } from "node:fs";
 
-// ✅ Your unique prefix (matches your GitHub username)
-export const TYPE_PREFIX = "io.github.gn00396084-crypto.ytfinder";
+const SKYBRIDGE_MIME = "text/html+skybridge";
 
-// ✅ Widget CSP (OpenAI widget sandbox policy)
-export const WIDGET_CSP = {
-  connect_domains: ["https://www.googleapis.com"],
-  resource_domains: ["https://i.ytimg.com"],
+// ✅ Required by Apps SDK UI resource metadata
+// Put ONLY what you really need.
+// - connect_domains: allow fetch/XHR to these domains (widget-side)
+// - resource_domains: allow loading images/scripts/css from these domains
+// - frame_domains: allow embedding iframes from these domains (usually empty)
+const WIDGET_CSP = {
+  connect_domains: [
+    // add your own API domain here ONLY if the widget fetches directly from it
+    "https://www.googleapis.com",
+    "https://chatgpt.com"
+  ],
+  resource_domains: [
+    "https://i.ytimg.com"
+  ],
   frame_domains: []
 };
 
-/* =========================
- * Local HTML files (repo root)
- * ========================= */
-const UI_FILES = {
-  home: "./ui-index.html",
-  search: "./ui-search.html",
-  videos: "./ui-videos.html"
-};
+// ✅ Official examples include widgetDomain; missing it often triggers the “CSP not set” warning.
+// Use chatgpt.com unless you were told otherwise by docs/tooling.
+const WIDGET_DOMAIN = "https://chatgpt.com";
 
 function loadUI(relPath) {
   const url = new URL(relPath, import.meta.url);
   return readFileSync(url, "utf8");
 }
 
-function makeUiContent(uri, html, pageKey, description) {
-  // ✅ Widget type MUST be unique per page (no ":"; use dot)
-  // Expected HTML inside page should match, e.g.
-  // <meta name="app:type" content="io.github.gn00396084-crypto.ytfinder.home">
-  const widgetType = `${TYPE_PREFIX}.${pageKey}`;
-  const widgetId = widgetType;
+/**
+ * Build ONE skybridge HTML resource content entry
+ * NOTE: the important part is contents[0]._meta
+ */
+function makeUiContent({ uri, html, pageKey, description }) {
+  // You can keep per-page “type/id” for debugging; MUST stay stable.
+  const widgetType = `${APP_ID}.${pageKey}`;
+  const widgetId = `${APP_ID}.${pageKey}`;
 
   return {
     uri,
@@ -55,85 +54,105 @@ function makeUiContent(uri, html, pageKey, description) {
     mimeType: SKYBRIDGE_MIME,
     text: html,
     _meta: {
-      "openai/widgetCSP": WIDGET_CSP,
-      "openai/widgetType": widgetType,
-      "openai/widgetId": widgetId,
+      "openai/widgetPrefersBorder": true,
       "openai/widgetDescription": description,
-      "openai/widgetPrefersBorder": true
+
+      // ✅ These two are the key ones for the red warning
+      "openai/widgetDomain": WIDGET_DOMAIN,
+      "openai/widgetCSP": WIDGET_CSP,
+
+      // (Optional / safe) keep if your inspector uses them
+      "openai/widgetType": widgetType,
+      "openai/widgetId": widgetId
     }
   };
 }
 
-/* =========================
- * Register resources (3 pages)
- * ========================= */
+/**
+ * Resource metadata (3rd arg) — keep mimeType here too.
+ * Some tooling reads meta here, some reads from contents[0]._meta; we set both.
+ */
+function makeResourceMeta({ title, description, pageKey }) {
+  return {
+    title,
+    mimeType: SKYBRIDGE_MIME,
+    description,
+    _meta: {
+      "openai/widgetPrefersBorder": true,
+      "openai/widgetDescription": description,
+      "openai/widgetDomain": WIDGET_DOMAIN,
+      "openai/widgetCSP": WIDGET_CSP,
+
+      // optional
+      "openai/widgetType": `${APP_ID}.${pageKey}`,
+      "openai/widgetId": `${APP_ID}.${pageKey}`
+    }
+  };
+}
+
 export function registerResources(mcp) {
-  const UI_HOME_HTML = loadUI(UI_FILES.home);
-  const UI_SEARCH_HTML = loadUI(UI_FILES.search);
-  const UI_VIDEOS_HTML = loadUI(UI_FILES.videos);
+  // files are in repo root (adjust paths if yours differ)
+  const UI_HOME_HTML = loadUI("./ui-index.html");
+  const UI_SEARCH_HTML = loadUI("./ui-search.html");
+  const UI_VIDEOS_HTML = loadUI("./ui-videos.html");
 
   mcp.registerResource(
     "youtube-finder-home",
     HOME_URI,
-    { title: "YouTube Finder Home", mimeType: SKYBRIDGE_MIME, description: "Home screen widget." },
+    makeResourceMeta({
+      title: "YouTube Finder Home",
+      description: "Home screen for YouTube Finder.",
+      pageKey: "home"
+    }),
     async () => ({
-      contents: [makeUiContent(HOME_URI, UI_HOME_HTML, "home", "Home screen for YouTube Finder.")]
+      contents: [
+        makeUiContent({
+          uri: HOME_URI,
+          html: UI_HOME_HTML,
+          pageKey: "home",
+          description: "Home screen for YouTube Finder."
+        })
+      ]
     })
   );
 
   mcp.registerResource(
     "youtube-finder-search",
     SEARCH_URI,
-    { title: "YouTube Finder Search", mimeType: SKYBRIDGE_MIME, description: "Search widget." },
+    makeResourceMeta({
+      title: "YouTube Finder Search",
+      description: "Search videos by title keyword.",
+      pageKey: "search"
+    }),
     async () => ({
-      contents: [makeUiContent(SEARCH_URI, UI_SEARCH_HTML, "search", "Search videos by title keyword.")]
+      contents: [
+        makeUiContent({
+          uri: SEARCH_URI,
+          html: UI_SEARCH_HTML,
+          pageKey: "search",
+          description: "Search videos by title keyword."
+        })
+      ]
     })
   );
 
   mcp.registerResource(
     "youtube-finder-videos",
     VIDEOS_URI,
-    { title: "YouTube Finder Videos", mimeType: SKYBRIDGE_MIME, description: "Latest videos list widget." },
+    makeResourceMeta({
+      title: "YouTube Finder Videos",
+      description: "List latest channel videos.",
+      pageKey: "videos"
+    }),
     async () => ({
-      contents: [makeUiContent(VIDEOS_URI, UI_VIDEOS_HTML, "videos", "List latest channel videos.")]
+      contents: [
+        makeUiContent({
+          uri: VIDEOS_URI,
+          html: UI_VIDEOS_HTML,
+          pageKey: "videos",
+          description: "List latest channel videos."
+        })
+      ]
     })
   );
-}
-
-/* =========================
- * Debug helpers (for /debug/* endpoints)
- * ========================= */
-export function debugListResources() {
-  return [
-    { key: "home", uri: HOME_URI, expectedType: `${TYPE_PREFIX}.home` },
-    { key: "search", uri: SEARCH_URI, expectedType: `${TYPE_PREFIX}.search` },
-    { key: "videos", uri: VIDEOS_URI, expectedType: `${TYPE_PREFIX}.videos` }
-  ];
-}
-
-export function debugInspectHtml(key) {
-  const rel = UI_FILES[key];
-  if (!rel) return { error: `unknown key: ${key}`, allowed: Object.keys(UI_FILES) };
-
-  const html = loadUI(rel);
-
-  const appType =
-    /<meta\s+name=["']app:type["']\s+content=["']([^"']+)["']\s*\/?>/i.exec(html)?.[1] ?? null;
-
-  const bodyType =
-    /<body[^>]*\sdata-widget-type=["']([^"']+)["'][^>]*>/i.exec(html)?.[1] ?? null;
-
-  const scriptTypes = [...html.matchAll(/<script\b[^>]*\stype=["']([^"']+)["'][^>]*>/gi)].map(
-    (m) => m[1]
-  );
-
-  return {
-    key,
-    file: rel,
-    expectedType: `${TYPE_PREFIX}.${key}`,
-    appType,
-    bodyType,
-    scriptTypes,
-    hasModuleScript: scriptTypes.includes("module")
-  };
 }
