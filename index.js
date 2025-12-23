@@ -49,4 +49,68 @@ function withSecurityHeaders(res, contentType = "text/html; charset=utf-8") {
 
 function sendJson(res, status, data) {
   res.statusCode = status;
-  withSecurityHeaders(res, "application/json; charset=utf-8"
+  withSecurityHeaders(res, "application/json; charset=utf-8");
+  res.end(JSON.stringify(data));
+}
+
+function sendText(res, status, text) {
+  res.statusCode = status;
+  withSecurityHeaders(res, "text/plain; charset=utf-8");
+  res.end(text);
+}
+
+async function sendFile(res, status, filename, contentType = "text/html; charset=utf-8") {
+  const p = path.join(__dirname, filename);
+  const buf = await readFile(p);
+  res.statusCode = status;
+  withSecurityHeaders(res, contentType);
+  res.end(buf);
+}
+
+async function fetchWorkerJson(workerPath) {
+  const url = new URL(workerPath, CF_WORKER_BASE_URL).toString();
+  const r = await fetch(url, { headers: { accept: "application/json" } });
+  const text = await r.text();
+  let json;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    json = { raw: text };
+  }
+  return { ok: r.ok, status: r.status, json };
+}
+
+function normalizeText(s) {
+  return String(s || "").toLowerCase().trim();
+}
+
+function pickVideoFields(v) {
+  const videoId = v.videoId || v.id?.videoId || v.id;
+  const title = v.title || v.snippet?.title || "";
+  const channelTitle = v.channelTitle || v.snippet?.channelTitle || "";
+  const publishedAt = v.publishedAt || v.snippet?.publishedAt || "";
+  const thumbnailUrl =
+    v.thumbnailUrl ||
+    v.thumbnails?.medium?.url ||
+    v.snippet?.thumbnails?.medium?.url ||
+    v.snippet?.thumbnails?.high?.url ||
+    "";
+
+  return { videoId, title, channelTitle, publishedAt, thumbnailUrl };
+}
+
+/* ---------------- MCP (optional, included) ---------------- */
+const mcp = new McpServer({ name: "yt-ui-mcp", version: "1.0.0" });
+
+mcp.tool(
+  "list_videos",
+  { limit: z.number().int().min(1).max(200).optional() },
+  async ({ limit }) => {
+    const { ok, status, json } = await fetchWorkerJson("/my-channel/videos");
+    if (!ok) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Worker error ${status}: ${JSON.stringify(json).slice(0, 500)}`,
+          },
