@@ -17,13 +17,29 @@ export function registerTools(mcp, env) {
 
   const emptySchema = z.object({}).strict();
 
+  // ✅ Required by Apps SDK tool descriptor rules
+  const NOAUTH = [{ type: "noauth" }];
+
+  // Helper to ensure every tool satisfies required meta fields
+  function toolMeta(outputTemplate) {
+    return {
+      securitySchemes: NOAUTH,                 // ✅ required mirror in _meta :contentReference[oaicite:1]{index=1}
+      "openai/outputTemplate": outputTemplate, // ✅ required :contentReference[oaicite:2]{index=2}
+      "openai/widgetAccessible": true,         // ✅ allow widget → tool calls :contentReference[oaicite:3]{index=3}
+    };
+  }
+
   /* ---------------- NAV tools ---------------- */
   mcp.registerTool(
     "open_home_page",
     {
       title: "Open Home Page",
       inputSchema: emptySchema,
-      _meta: { "openai/outputTemplate": HOME_URI }
+
+      // ✅ Put securitySchemes at top-level too
+      securitySchemes: NOAUTH,
+
+      _meta: toolMeta(HOME_URI)
     },
     async () => ({
       content: [{ type: "text", text: "Open home page" }],
@@ -37,7 +53,8 @@ export function registerTools(mcp, env) {
     {
       title: "Open Search Page",
       inputSchema: emptySchema,
-      _meta: { "openai/outputTemplate": SEARCH_URI }
+      securitySchemes: NOAUTH,
+      _meta: toolMeta(SEARCH_URI)
     },
     async () => ({
       content: [{ type: "text", text: "Open search page" }],
@@ -52,7 +69,8 @@ export function registerTools(mcp, env) {
     {
       title: "List Videos",
       inputSchema: listSchema,
-      _meta: { "openai/outputTemplate": VIDEOS_URI }
+      securitySchemes: NOAUTH,
+      _meta: toolMeta(VIDEOS_URI)
     },
     async ({ limit }) => {
       const L = limit ?? 30;
@@ -79,7 +97,8 @@ export function registerTools(mcp, env) {
     {
       title: "Search Videos",
       inputSchema: searchSchema,
-      _meta: { "openai/outputTemplate": SEARCH_URI }
+      securitySchemes: NOAUTH,
+      _meta: toolMeta(SEARCH_URI)
     },
     async ({ query, limit }) => {
       const L = limit ?? 30;
