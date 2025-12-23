@@ -4,21 +4,11 @@
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
 
-  <!-- ✅ Required: CSP -->
+  <!-- CSP：用單行，避免某些提交檢查器讀唔到 -->
   <meta http-equiv="Content-Security-Policy"
-        content="
-          default-src 'self';
-          base-uri 'none';
-          frame-ancestors 'none';
-          form-action 'none';
-          object-src 'none';
-          script-src 'self' 'unsafe-inline';
-          style-src 'self' 'unsafe-inline';
-          img-src 'self' data: https:;
-          connect-src 'self' https:;
-        ">
+        content="default-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'; object-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:;">
 
-  <!-- ✅ Required: Unique widget/app type (must match across ALL ui://page/*.html) -->
+  <!-- type：保持一致（但注意：真正 required 的 type 係 resource 的 mimeType） -->
   <meta name="app:type" content="yt-chatgpt-ui-app"/>
 
   <title>YouTube Finder - Videos</title>
@@ -38,7 +28,6 @@
   </style>
 </head>
 
-<!-- ✅ Extra insurance: some validators also look for type on body -->
 <body data-widget-type="yt-chatgpt-ui-app">
   <div class="card">
     <div class="row" style="justify-content:space-between">
@@ -111,26 +100,12 @@
     }
 
     document.getElementById("reload").addEventListener("click", reload);
-
-    document.getElementById("search").addEventListener("click", async () => {
-      await callTool("open_search_page", {});
-    });
-
-    document.getElementById("home").addEventListener("click", async () => {
-      await callTool("open_home_page", {});
-    });
+    document.getElementById("search").addEventListener("click", async () => { await callTool("open_search_page", {}); });
+    document.getElementById("home").addEventListener("click", async () => { await callTool("open_home_page", {}); });
 
     (function(){
-      // expose type for debugging
       window.__WIDGET_TYPE__ = WIDGET_TYPE;
-
-      if (window.openai?.toolOutput) {
-        render(window.openai.toolOutput);
-      } else {
-        // Optional: auto-load once if no toolOutput provided
-        // Comment out if you prefer manual reload
-        // reload();
-      }
+      if (window.openai?.toolOutput) render(window.openai.toolOutput);
     })();
   </script>
 </body>
