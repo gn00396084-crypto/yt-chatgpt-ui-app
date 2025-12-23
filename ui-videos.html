@@ -3,75 +3,316 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Videos</title>
+  <title>故事說音樂｜最新影片</title>
   <style>
-    :root { --bg:#f7f7fb; --card:#fff; --text:#111; --muted:rgba(0,0,0,.65); --border:rgba(0,0,0,.08); }
+    :root {
+      --bg:#f7f7fb;
+      --card:#fff;
+      --text:#111;
+      --muted:rgba(0,0,0,.65);
+      --border:rgba(0,0,0,.08);
+    }
     * { box-sizing: border-box; }
-    body { margin:0; font-family: system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,"PingFang TC","Noto Sans TC",sans-serif; background:var(--bg); color:var(--text); }
-    header { position: sticky; top: 0; z-index: 20; background: rgba(247,247,251,.8); backdrop-filter: blur(10px); border-bottom:1px solid var(--border); }
-    .wrap { max-width: 1100px; margin: 0 auto; padding: 14px 16px; }
-    .row { display:flex; gap:10px; align-items:center; justify-content:space-between; }
-    .title { font-weight: 750; letter-spacing:.2px; }
-    .nav a { color: var(--text); text-decoration:none; padding:8px 10px; border-radius:10px; }
-    .nav a:hover { background: rgba(0,0,0,.06); }
-    .pill { font-size:12px; padding:6px 10px; border:1px solid var(--border); border-radius:999px; background: #fff; color: var(--muted); }
+    body{
+      margin:0;
+      font-family: system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,"PingFang TC","Noto Sans TC",sans-serif;
+      background:var(--bg);
+      color:var(--text);
+    }
+    header{
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      background: rgba(247,247,251,.82);
+      backdrop-filter: blur(10px);
+      border-bottom:1px solid var(--border);
+    }
+    .wrap{
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 14px 16px;
+    }
+    .row-top{
+      display:flex;
+      gap:10px;
+      align-items:center;
+      justify-content:space-between;
+    }
+    .title{
+      font-weight: 800;
+      letter-spacing:.2px;
+      display:flex;
+      gap:10px;
+      align-items:center;
+    }
+    .nav{
+      display:flex;
+      gap:8px;
+      align-items:center;
+    }
+    .nav a{
+      color: var(--text);
+      text-decoration:none;
+      padding:8px 10px;
+      border-radius:10px;
+    }
+    .nav a:hover{ background: rgba(0,0,0,.06); }
+    .nav a.active{ background: rgba(0,0,0,.06); }
 
-    .toolbar { display:flex; gap:10px; align-items:center; margin-top: 10px; }
-    .btn { border:1px solid var(--border); background:#fff; color:var(--text); padding:10px 12px; border-radius:12px; cursor:pointer; font-weight:650; }
-    .btn:hover { background: rgba(0,0,0,.04); }
-    .hint { font-size:12px; color: var(--muted); }
+    .toolbar{
+      display:flex;
+      gap:10px;
+      align-items:center;
+      margin-top: 10px;
+    }
+    .btn{
+      border:1px solid var(--border);
+      background:#fff;
+      color:var(--text);
+      padding:10px 12px;
+      border-radius:12px;
+      cursor:pointer;
+      font-weight:700;
+    }
+    .btn:hover{ background: rgba(0,0,0,.04); }
+    .pill{
+      font-size:12px;
+      padding:6px 10px;
+      border:1px solid var(--border);
+      border-radius:999px;
+      background:#fff;
+      color:var(--muted);
+    }
+    .hint{
+      font-size:12px;
+      color: var(--muted);
+    }
 
-    .vgrid{ display:grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; padding: 18px 16px 24px; max-width: 1100px; margin: 0 auto; }
-    .vcard{ border:1px solid var(--border); border-radius: 14px; overflow:hidden; background:var(--card); box-shadow: 0 6px 18px rgba(0,0,0,.04); }
-    .vthumb{ position:relative; aspect-ratio: 16 / 9; background:#eee; overflow:hidden; }
-    .vthumb img{ width:100%; height:100%; object-fit:cover; display:block; transform: scale(1.01); }
-    .vplay{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; background: linear-gradient(to bottom, rgba(0,0,0,.0), rgba(0,0,0,.25)); border:0; cursor:pointer; }
-    .vplay span{ width:56px; height:56px; border-radius: 18px; background: rgba(0,0,0,.55); display:flex; align-items:center; justify-content:center; color:#fff; font-size: 22px; backdrop-filter: blur(6px); }
-    .vmeta{ padding:10px 12px 12px; }
-    .vtitle{ font-weight: 700; font-size: 14px; line-height: 1.35; }
-    .vsub{ opacity:.75; font-size: 12px; margin-top: 6px; display:flex; justify-content:space-between; gap:10px; }
-    .vsub .date { opacity:.7; white-space:nowrap; }
-    .empty { max-width: 1100px; margin: 18px auto; padding: 0 16px; color: var(--muted); white-space: pre-wrap; }
-    .footer { max-width:1100px; margin:0 auto; padding: 0 16px 24px; color: var(--muted); font-size:12px; }
+    /* ================================
+       Horizontal Row (Netflix-style)
+       ================================ */
+    .row-wrap{
+      position: relative;
+      max-width: 1100px;
+      margin: 18px auto 8px;
+      padding: 0 16px;
+    }
 
+    .row{
+      display: grid;
+      grid-auto-flow: column;
+      grid-auto-columns: minmax(240px, 320px);
+      gap: 16px;
+
+      overflow-x: auto;
+      padding: 6px 6px 12px;
+      scroll-snap-type: x mandatory;
+      scroll-behavior: smooth;
+      -webkit-overflow-scrolling: touch;
+
+      scrollbar-width: none;
+    }
+    .row::-webkit-scrollbar{ display:none; }
+
+    .row-nav{
+      position: absolute;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 42px;
+      height: 42px;
+      border-radius: 12px;
+      border: 1px solid rgba(0,0,0,.12);
+      background: rgba(255,255,255,.92);
+      backdrop-filter: blur(8px);
+      cursor: pointer;
+      font-size: 22px;
+      font-weight: 800;
+      line-height: 1;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      z-index: 5;
+      user-select:none;
+    }
+    .row-nav:hover{ background: rgba(255,255,255,1); }
+    .row-nav.left{ left: 6px; }
+    .row-nav.right{ right: 6px; }
+
+    /* edge fade */
+    .row-wrap:before,
+    .row-wrap:after{
+      content:"";
+      position:absolute;
+      top:0; bottom:0;
+      width: 40px;
+      pointer-events:none;
+      z-index:4;
+    }
+    .row-wrap:before{
+      left: 16px;
+      background: linear-gradient(to right, rgba(247,247,251,1), rgba(247,247,251,0));
+    }
+    .row-wrap:after{
+      right: 16px;
+      background: linear-gradient(to left, rgba(247,247,251,1), rgba(247,247,251,0));
+    }
+
+    /* card */
+    .g-card{
+      position:relative;
+      border-radius:14px;
+      overflow:hidden;
+      background:#eee;
+      aspect-ratio: 16 / 9;
+      cursor:pointer;
+      scroll-snap-align: start;
+      border: 1px solid rgba(0,0,0,.08);
+      box-shadow: 0 6px 18px rgba(0,0,0,.04);
+    }
+    .g-card img{
+      width:100%;
+      height:100%;
+      object-fit:cover;
+      display:block;
+      transition: transform .35s ease;
+      transform: scale(1.01);
+    }
+    .g-card:hover img{ transform: scale(1.06); }
+
+    .g-overlay{
+      position:absolute;
+      inset:0;
+      background: linear-gradient(to bottom, rgba(0,0,0,.0), rgba(0,0,0,.62));
+      opacity:0;
+      transition: opacity .2s ease;
+      display:flex;
+      align-items:flex-end;
+      padding:12px;
+    }
+    .g-card:hover .g-overlay{ opacity:1; }
+
+    .g-title{
+      color:#fff;
+      font-size:13px;
+      line-height:1.3;
+      font-weight:700;
+      text-shadow: 0 2px 10px rgba(0,0,0,.45);
+    }
+
+    .g-play{
+      position:absolute;
+      inset:0;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+    }
+    .g-play span{
+      width:52px;
+      height:52px;
+      border-radius:50%;
+      background: rgba(0,0,0,.55);
+      color:#fff;
+      font-size:22px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      backdrop-filter: blur(6px);
+    }
+
+    /* Empty / Error */
+    .empty{
+      max-width: 1100px;
+      margin: 10px auto 24px;
+      padding: 0 16px;
+      color: var(--muted);
+      white-space: pre-wrap;
+    }
+
+    /* ================================
+       YouTube Modal
+       ================================ */
     body.modal-open { overflow: hidden; }
-    .yt-modal { position: fixed; inset: 0; display: none; z-index: 9999; }
-    .yt-modal.is-open { display: block; }
-    .yt-modal__backdrop { position: absolute; inset: 0; background: rgba(0,0,0,.6); }
-    .yt-modal__panel { position: relative; width: min(980px, calc(100vw - 24px)); margin: 6vh auto 0; background: #111; border-radius: 14px; box-shadow: 0 10px 40px rgba(0,0,0,.45); overflow: hidden; }
-    .yt-modal__close { position: absolute; top: 10px; right: 10px; width: 36px; height: 36px; border: 0; border-radius: 10px; background: rgba(255,255,255,.12); color: #fff; cursor: pointer; font-size: 18px; z-index: 2; }
-    .yt-modal__close:hover { background: rgba(255,255,255,.18); }
-    .yt-modal__ratio { position: relative; width: 100%; padding-top: 56.25%; }
-    .yt-modal__ratio iframe { position: absolute; inset: 0; width: 100%; height: 100%; }
+
+    .yt-modal{
+      position: fixed;
+      inset: 0;
+      display: none;
+      z-index: 9999;
+    }
+    .yt-modal.is-open{ display:block; }
+
+    .yt-modal__backdrop{
+      position:absolute;
+      inset:0;
+      background: rgba(0,0,0,.6);
+    }
+    .yt-modal__panel{
+      position: relative;
+      width: min(980px, calc(100vw - 24px));
+      margin: 6vh auto 0;
+      background: #111;
+      border-radius: 14px;
+      box-shadow: 0 10px 40px rgba(0,0,0,.45);
+      overflow: hidden;
+    }
+    .yt-modal__close{
+      position:absolute;
+      top: 10px;
+      right: 10px;
+      width: 36px;
+      height: 36px;
+      border: 0;
+      border-radius: 10px;
+      background: rgba(255,255,255,.12);
+      color: #fff;
+      cursor: pointer;
+      font-size: 18px;
+      z-index: 2;
+    }
+    .yt-modal__close:hover{ background: rgba(255,255,255,.18); }
+
+    .yt-modal__ratio{
+      position: relative;
+      width: 100%;
+      padding-top: 56.25%;
+    }
+    .yt-modal__ratio iframe{
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+    }
   </style>
 </head>
 
 <body>
 <header>
   <div class="wrap">
-    <div class="row">
-      <div class="title">📺 最新影片</div>
+    <div class="row-top">
+      <div class="title">🎧 故事說音樂 <span class="pill">最新影片</span></div>
       <div class="nav">
-        <a href="/ui/search">去搜尋</a>
-        <a href="/ui/videos" style="background:rgba(0,0,0,.06);">首頁</a>
+        <a href="/ui/videos" class="active">🏠 首頁</a>
+        <a href="/ui/search">🔎 去搜尋</a>
       </div>
     </div>
 
     <div class="toolbar">
       <button class="btn" onclick="loadVideos()">重新載入</button>
       <span id="count" class="pill">—</span>
-      <span class="hint">點縮圖 ▶ 播放（Modal）</span>
+      <span class="hint">拖動/滾輪橫向滑動，點封面 ▶ 播放</span>
     </div>
   </div>
 </header>
 
-<div id="videoGrid" class="vgrid"></div>
-<div id="empty" class="empty" style="display:none;"></div>
-
-<div class="footer">
-  API: <code>/api/videos</code>
+<div class="row-wrap">
+  <button class="row-nav left" aria-label="Prev" onclick="scrollRow(-1)">‹</button>
+  <div id="videoRow" class="row"></div>
+  <button class="row-nav right" aria-label="Next" onclick="scrollRow(1)">›</button>
 </div>
 
+<div id="empty" class="empty" style="display:none;"></div>
+
+<!-- Modal -->
 <div id="ytModal" class="yt-modal" aria-hidden="true">
   <div class="yt-modal__backdrop" onclick="closeYtModal()"></div>
   <div class="yt-modal__panel" role="dialog" aria-modal="true" aria-label="YouTube player">
@@ -84,11 +325,17 @@
 </div>
 
 <script>
-  const grid = document.getElementById("videoGrid");
+  const rowEl   = document.getElementById("videoRow");
   const emptyEl = document.getElementById("empty");
   const countEl = document.getElementById("count");
   const YT_MODAL = document.getElementById("ytModal");
   const YT_FRAME = document.getElementById("ytFrame");
+
+  function escapeHtml(s){
+    return String(s ?? "").replace(/[&<>"']/g, c => ({
+      "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"
+    }[c]));
+  }
 
   function openYtModal(videoId) {
     if (!videoId || String(videoId).length !== 11) {
@@ -100,34 +347,46 @@
     YT_MODAL.setAttribute("aria-hidden", "false");
     document.body.classList.add("modal-open");
   }
+
   function closeYtModal() {
     YT_MODAL.classList.remove("is-open");
     YT_MODAL.setAttribute("aria-hidden", "true");
     document.body.classList.remove("modal-open");
     YT_FRAME.src = "";
   }
+
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && YT_MODAL.classList.contains("is-open")) closeYtModal();
   });
 
-  function escapeHtml(s){
-    return String(s ?? "").replace(/[&<>"']/g, c => ({
-      "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"
-    }[c]));
-  }
-  function fmtDate(s){
-    if (!s) return "";
-    try { return new Date(s).toISOString().slice(0,10); } catch { return ""; }
+  function renderRow(items){
+    rowEl.innerHTML = items.map(v => {
+      const vid = v.videoId;
+      const title = escapeHtml(v.title || "(no title)");
+      const thumb = v.thumbnailUrl || "";
+      return `
+        <div class="g-card" onclick="openYtModal('${vid}')">
+          <img src="${thumb}" alt="${title}">
+          <div class="g-play"><span>▶</span></div>
+          <div class="g-overlay"><div class="g-title">${title}</div></div>
+        </div>
+      `;
+    }).join("");
   }
 
-  async function loadVideos() {
+  function scrollRow(dir){
+    const cardW = rowEl.firstElementChild?.getBoundingClientRect().width || 280;
+    rowEl.scrollBy({ left: dir * (cardW + 16) * 1.2, behavior: "smooth" });
+  }
+
+  async function loadVideos(){
     emptyEl.style.display = "none";
     emptyEl.textContent = "";
-    grid.innerHTML = "";
+    rowEl.innerHTML = "";
     countEl.textContent = "Loading…";
 
     try {
-      const res = await fetch("/api/videos", { cache: "no-store" });
+      const res = await fetch("/api/videos", { cache:"no-store" });
       const text = await res.text();
 
       if (!res.ok) {
@@ -150,8 +409,10 @@
         return;
       }
 
-      const items = data?.items || data?.videos || [];
-      render(items);
+      const items = (data?.items || []).filter(x => x?.videoId);
+      countEl.textContent = `${items.length} videos`;
+      renderRow(items);
+
     } catch (e) {
       countEl.textContent = "Fetch Error";
       emptyEl.style.display = "block";
@@ -159,40 +420,16 @@
     }
   }
 
-  function render(items) {
-    if (!items.length) {
-      countEl.textContent = "0";
-      emptyEl.style.display = "block";
-      emptyEl.textContent = "No videos.";
-      return;
+  // Optional: mouse wheel horizontal scroll (nice on desktop)
+  rowEl.addEventListener("wheel", (e) => {
+    // shift+wheel keep default vertical
+    if (e.shiftKey) return;
+    // convert vertical wheel to horizontal
+    if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+      e.preventDefault();
+      rowEl.scrollBy({ left: e.deltaY, behavior: "auto" });
     }
-
-    countEl.textContent = `${items.length} videos`;
-
-    grid.innerHTML = items.map(v => {
-      const vid = v.videoId || v.id?.videoId || v.id;
-      const title = escapeHtml(v.title || v.snippet?.title || "(no title)");
-      const ch = escapeHtml(v.channelTitle || v.snippet?.channelTitle || "");
-      const dt = fmtDate(v.publishedAt || v.snippet?.publishedAt);
-      const thumb = v.thumbnailUrl || v.snippet?.thumbnails?.medium?.url || v.snippet?.thumbnails?.high?.url || "";
-
-      return `
-        <div class="vcard">
-          <div class="vthumb">
-            <img src="${thumb}" alt="${title}">
-            <button class="vplay" onclick="openYtModal('${vid}')"><span>▶</span></button>
-          </div>
-          <div class="vmeta">
-            <div class="vtitle">${title}</div>
-            <div class="vsub">
-              <div class="ch">${ch}</div>
-              <div class="date">${dt}</div>
-            </div>
-          </div>
-        </div>
-      `;
-    }).join("");
-  }
+  }, { passive: false });
 
   loadVideos();
 </script>
