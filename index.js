@@ -1,19 +1,6 @@
 // index.js — FINAL (UI + API + MCP-ready, Railway-ready)
-//
 // Env required:
 //   CF_WORKER_BASE_URL = https://xxx.workers.dev
-//
-// Routes:
-//   GET  /                -> redirect to /ui/search
-//   GET  /ui/search       -> serve ui-search.html
-//   GET  /ui/videos       -> serve ui-videos.html
-//   GET  /api/videos      -> forward to CF worker /my-channel/videos
-//   GET  /api/search?q=   -> local filter from /api/videos (server-side search)
-//   POST /mcp             -> MCP streamable HTTP transport (optional usage)
-//
-// Notes:
-// - CSP includes frame-src for youtube + youtube-nocookie
-// - UI uses inline <style>/<script>, so CSP allows 'unsafe-inline' for those only.
 
 import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
@@ -35,6 +22,7 @@ if (!CF_WORKER_BASE_URL) {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+/* ---------------- Security headers ---------------- */
 function withSecurityHeaders(res, contentType = "text/html; charset=utf-8") {
   res.setHeader("Content-Type", contentType);
   res.setHeader("X-Content-Type-Options", "nosniff");
@@ -43,8 +31,6 @@ function withSecurityHeaders(res, contentType = "text/html; charset=utf-8") {
   res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
   res.setHeader("Cross-Origin-Resource-Policy", "same-origin");
 
-  // CSP: allow inline style/script for our static HTML only
-  // allow YouTube embeds via frame-src
   const csp = [
     "default-src 'self'",
     "base-uri 'self'",
@@ -57,67 +43,10 @@ function withSecurityHeaders(res, contentType = "text/html; charset=utf-8") {
     "connect-src 'self' https:",
     "frame-src https://www.youtube.com https://www.youtube-nocookie.com",
   ].join("; ");
+
   res.setHeader("Content-Security-Policy", csp);
 }
 
 function sendJson(res, status, data) {
   res.statusCode = status;
-  withSecurityHeaders(res, "application/json; charset=utf-8");
-  res.end(JSON.stringify(data));
-}
-
-function sendText(res, status, text) {
-  res.statusCode = status;
-  withSecurityHeaders(res, "text/plain; charset=utf-8");
-  res.end(text);
-}
-
-async function sendFile(res, status, filename, contentType = "text/html; charset=utf-8") {
-  const p = path.join(__dirname, filename);
-  const buf = await readFile(p);
-  res.statusCode = status;
-  withSecurityHeaders(res, contentType);
-  res.end(buf);
-}
-
-async function fetchWorkerJson(workerPath) {
-  const url = new URL(workerPath, CF_WORKER_BASE_URL).toString();
-  const r = await fetch(url, { headers: { "accept": "application/json" } });
-  const text = await r.text();
-  let json;
-  try { json = JSON.parse(text); } catch { json = { raw: text }; }
-  return { ok: r.ok, status: r.status, json };
-}
-
-function normalizeText(s) {
-  return String(s || "").toLowerCase().trim();
-}
-
-function pickVideoFields(v) {
-  const videoId = v.videoId || v.id?.videoId || v.id;
-  const title = v.title || v.snippet?.title || "";
-  const channelTitle = v.channelTitle || v.snippet?.channelTitle || "";
-  const publishedAt = v.publishedAt || v.snippet?.publishedAt || "";
-  const thumbnailUrl =
-    v.thumbnailUrl ||
-    v.thumbnails?.medium?.url ||
-    v.snippet?.thumbnails?.medium?.url ||
-    v.snippet?.thumbnails?.high?.url ||
-    "";
-
-  return { videoId, title, channelTitle, publishedAt, thumbnailUrl };
-}
-
-/* ---------------- MCP server (optional, still included) ---------------- */
-const mcp = new McpServer({ name: "yt-ui-mcp", version: "1.0.0" });
-
-// Tool: list videos (from CF worker)
-mcp.tool(
-  "list_videos",
-  { limit: z.number().int().min(1).max(200).optional() },
-  async ({ limit }) => {
-    const { ok, status, json } = await fetchWorkerJson("/my-channel/videos");
-    if (!ok) {
-      return { content: [{ type: "text", text: `Worker error ${status}: ${JSON.stringify(json).slice(0, 500)}` }] };
-    }
-    c
+  withSecurityHeaders(res, "application/json; charset=utf-8"
