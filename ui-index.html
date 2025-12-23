@@ -9,7 +9,7 @@
         content="default-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'; object-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:;">
 
   <!-- ✅ 必須：與 mcp.resources.js 的 widgetType 完全一致（唯一、無冒號） -->
-  <meta name="app:type" content="io.github.yourgithub.ytfinder.home"/>
+  <meta name="app:type" content="io.github.gn00396084-crypto.ytfinder.home"/>
 
   <title>YouTube Finder</title>
 
@@ -27,7 +27,7 @@
   </style>
 </head>
 
-<body data-widget-type="io.github.yourgithub.ytfinder.home">
+<body data-widget-type="io.github.gn00396084-crypto.ytfinder.home">
   <div class="card">
     <h2 style="margin:0 0 6px">YouTube Finder</h2>
     <div class="muted">選擇功能頁面</div>
@@ -53,7 +53,7 @@
   <!-- ✅ 必須：module script，且只保留一個入口 -->
   <script type="module">
     // ✅ 與 meta / body / mcp.resources.js 完全一致
-    const WIDGET_TYPE = "io.github.yourgithub.ytfinder.home";
+    const WIDGET_TYPE = "io.github.gn00396084-crypto.ytfinder.home";
 
     function setStatus(msg){
       document.getElementById("status").textContent = msg;
