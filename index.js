@@ -1,8 +1,9 @@
-// index.js — FINAL STABLE VERSION (Railway-ready)
+// index.js — FINAL STABLE VERSION (Railway-ready, Multi-page UI from repo files)
 // Env required:
 //   CF_WORKER_BASE_URL = https://xxx.workers.dev
 
 import { createServer } from "node:http";
+import { readFileSync } from "node:fs";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { z } from "zod";
@@ -17,77 +18,72 @@ if (!CF_WORKER_BASE_URL) {
 }
 
 /* ---------------- UI (skybridge) ---------------- */
-const UI_HTML = `<!doctype html>
-<html>
-<head>
-<meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>YouTube Finder</title>
-<style>
-:root{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
-body{margin:0;padding:12px}
-.card{border:1px solid rgba(0,0,0,.12);border-radius:12px;padding:12px}
-.row{display:flex;gap:8px;align-items:center}
-input{flex:1;padding:10px 12px;border-radius:10px;border:1px solid rgba(0,0,0,.18)}
-button{padding:10px 12px;border-radius:10px;border:1px solid rgba(0,0,0,.18);background:#fff;cursor:pointer}
-small{opacity:.7}
-ul{list-style:none;padding:0;margin:12px 0 0}
-li{padding:10px 0;border-top:1px solid rgba(0,0,0,.08)}
-a{text-decoration:none}a:hover{text-decoration:underline}
-</style>
-</head>
-<body>
-<div id="app" class="card"></div>
-<script>
-function esc(s){return String(s).replace(/[&<>"']/g,c=>({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]))}
-async function callTool(n,a){return window.openai.callTool(n,a);}
-function render(p){
-  const info=p?.structuredContent||{};
-  const meta=p?._meta||{};
-  const app=document.getElementById("app");
-  app.innerHTML=\`
-    <div class="row">
-      <input id="q" placeholder="搜尋標題"/>
-      <button id="s">搜尋</button>
-      <button id="l">最新</button>
-    </div>
-    <div style="margin-top:8px"><small>模式：\${meta.mode||""} ｜ 共 \${info.totalVideos||0} 條</small></div>
-    <ul id="list"></ul>\`;
-  document.getElementById("s").onclick=async()=>{
-    const q=document.getElementById("q").value.trim();
-    if(!q)return;
-    render(await callTool("search_videos",{query:q,limit:30}));
-  };
-  document.getElementById("l").onclick=async()=>{
-    render(await callTool("list_videos",{limit:30}));
-  };
-  const list=document.getElementById("list");
-  list.innerHTML=(info.videos||[]).map(v=>\`
-    <li>
-      <a href="\${v.url}" target="_blank">\${esc(v.title)}</a>
-      <div><small>\${v.publishedAt||""}</small></div>
-    </li>\`).join("") || "<li><small>無結果</small></li>";
+// Multi-page URIs (these are the template identifiers)
+const HOME_URI = "ui://page/index.html";
+const VIDEOS_URI = "ui://page/videos.html";
+const SEARCH_URI = "ui://page/search.html";
+
+// Load UI pages from repo root files
+function loadUI(relPath) {
+  // ESM-safe: resolve relative to this index.js
+  const url = new URL(relPath, import.meta.url);
+  return readFileSync(url, "utf8");
 }
-(function(){ if(window.openai?.toolOutput) render(window.openai.toolOutput); })();
-</script>
-</body>
-</html>`;
+
+// You said these files already exist in repo root:
+const UI_HOME_HTML = loadUI("./ui-index.html");
+const UI_VIDEOS_HTML = loadUI("./ui-videos.html");
+const UI_SEARCH_HTML = loadUI("./ui-search.html");
 
 /* ---------------- MCP ---------------- */
 const mcp = new McpServer({ name: "YouTube Channel Finder", version: "1.0.0" });
-const TEMPLATE_URI = "ui://widget/youtube-finder.html";
+
+// Register 3 UI resources
+mcp.registerResource(
+  "youtube-finder-home",
+  HOME_URI,
+  { title: "YouTube Finder Home" },
+  async () => ({
+    contents: [
+      {
+        uri: HOME_URI,
+        type: "text",
+        mimeType: "text/html+skybridge",
+        text: UI_HOME_HTML
+      }
+    ]
+  })
+);
 
 mcp.registerResource(
-  "youtube-finder-widget",
-  TEMPLATE_URI,
-  { title: "YouTube Finder Widget" },
+  "youtube-finder-videos",
+  VIDEOS_URI,
+  { title: "YouTube Finder Videos" },
   async () => ({
-    contents: [{
-      uri: TEMPLATE_URI,
-      type: "text",
-      mimeType: "text/html+skybridge",
-      text: UI_HTML
-    }]
+    contents: [
+      {
+        uri: VIDEOS_URI,
+        type: "text",
+        mimeType: "text/html+skybridge",
+        text: UI_VIDEOS_HTML
+      }
+    ]
+  })
+);
+
+mcp.registerResource(
+  "youtube-finder-search",
+  SEARCH_URI,
+  { title: "YouTube Finder Search" },
+  async () => ({
+    contents: [
+      {
+        uri: SEARCH_URI,
+        type: "text",
+        mimeType: "text/html+skybridge",
+        text: UI_SEARCH_HTML
+      }
+    ]
   })
 );
 
@@ -100,6 +96,8 @@ const searchSchema = z.object({
   query: z.string().min(1),
   limit: z.number().int().min(1).max(200).optional()
 });
+
+const emptySchema = z.object({}).strict();
 
 /* ---------------- Helpers ---------------- */
 async function fetchIndex(limit) {
@@ -130,12 +128,42 @@ function normalize(v) {
 }
 
 /* ---------------- Tools ---------------- */
+// NAV tools (page switches)
+mcp.registerTool(
+  "open_home_page",
+  {
+    title: "Open Home Page",
+    inputSchema: emptySchema,
+    _meta: { "openai/outputTemplate": HOME_URI }
+  },
+  async () => ({
+    content: [{ type: "text", text: "Open home page" }],
+    structuredContent: {},
+    _meta: { mode: "NAV", page: "HOME" }
+  })
+);
+
+mcp.registerTool(
+  "open_search_page",
+  {
+    title: "Open Search Page",
+    inputSchema: emptySchema,
+    _meta: { "openai/outputTemplate": SEARCH_URI }
+  },
+  async () => ({
+    content: [{ type: "text", text: "Open search page" }],
+    structuredContent: {},
+    _meta: { mode: "NAV", page: "SEARCH" }
+  })
+);
+
+// Data tools
 mcp.registerTool(
   "list_videos",
   {
     title: "List Videos",
     inputSchema: listSchema,
-    _meta: { "openai/outputTemplate": TEMPLATE_URI }
+    _meta: { "openai/outputTemplate": VIDEOS_URI }
   },
   async ({ limit }) => {
     const L = limit ?? 30;
@@ -162,7 +190,7 @@ mcp.registerTool(
   {
     title: "Search Videos",
     inputSchema: searchSchema,
-    _meta: { "openai/outputTemplate": TEMPLATE_URI }
+    _meta: { "openai/outputTemplate": SEARCH_URI }
   },
   async ({ query, limit }) => {
     const L = limit ?? 30;
@@ -207,11 +235,17 @@ createServer(async (req, res) => {
       const r = await fetch(`${CF_WORKER_BASE_URL}/my-channel/videos?limit=3`);
       const t = await r.text();
       res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
-      res.end(JSON.stringify({
-        ok: true,
-        status: r.status,
-        bodyPreview: t.slice(0, 500)
-      }, null, 2));
+      res.end(
+        JSON.stringify(
+          {
+            ok: true,
+            status: r.status,
+            bodyPreview: t.slice(0, 500)
+          },
+          null,
+          2
+        )
+      );
     } catch (e) {
       res.writeHead(500, { "Content-Type": "application/json; charset=utf-8" });
       res.end(JSON.stringify({ ok: false, error: String(e) }, null, 2));
