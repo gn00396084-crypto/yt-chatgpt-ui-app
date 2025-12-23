@@ -85,21 +85,21 @@ function normalizeText(s) {
 }
 
 function pickVideoFields(v) {
-  const videoId = v.videoId || v.id?.videoId || v.id;
-  const title = v.title || v.snippet?.title || "";
-  const channelTitle = v.channelTitle || v.snippet?.channelTitle || "";
-  const publishedAt = v.publishedAt || v.snippet?.publishedAt || "";
-  const thumbnailUrl =
-    v.thumbnailUrl ||
-    v.thumbnails?.medium?.url ||
-    v.snippet?.thumbnails?.medium?.url ||
-    v.snippet?.thumbnails?.high?.url ||
-    "";
-
-  return { videoId, title, channelTitle, publishedAt, thumbnailUrl };
+  return {
+    videoId: v.videoId || v.id?.videoId || v.id,
+    title: v.title || v.snippet?.title || "",
+    channelTitle: v.channelTitle || v.snippet?.channelTitle || "",
+    publishedAt: v.publishedAt || v.snippet?.publishedAt || "",
+    thumbnailUrl:
+      v.thumbnailUrl ||
+      v.thumbnails?.medium?.url ||
+      v.snippet?.thumbnails?.medium?.url ||
+      v.snippet?.thumbnails?.high?.url ||
+      "",
+  };
 }
 
-/* ---------------- MCP (optional, included) ---------------- */
+/* ---------------- MCP ---------------- */
 const mcp = new McpServer({ name: "yt-ui-mcp", version: "1.0.0" });
 
 mcp.tool(
@@ -109,8 +109,96 @@ mcp.tool(
     const { ok, status, json } = await fetchWorkerJson("/my-channel/videos");
     if (!ok) {
       return {
-        content: [
-          {
-            type: "text",
-            text: `Worker error ${status}: ${JSON.stringify(json).slice(0, 500)}`,
-          },
+        content: [{ type: "text", text: `Worker error ${status}` }],
+      };
+    }
+    const items = (json.items || json.videos || [])
+      .slice(0, limit ?? 50)
+      .map(pickVideoFields);
+
+    return {
+      content: [{ type: "text", text: JSON.stringify({ items }, null, 2) }],
+    };
+  }
+);
+
+mcp.tool(
+  "search_videos",
+  { q: z.string().optional() },
+  async ({ q }) => {
+    const { ok, status, json } = await fetchWorkerJson("/my-channel/videos");
+    if (!ok) {
+      return {
+        content: [{ type: "text", text: `Worker error ${status}` }],
+      };
+    }
+
+    const items = (json.items || json.videos || []).map(pickVideoFields);
+    const query = normalizeText(q);
+
+    const filtered = !query
+      ? []
+      : items.filter((v) =>
+          normalizeText(`${v.title} ${v.channelTitle}`).includes(query)
+        );
+
+    return {
+      content: [{ type: "text", text: JSON.stringify({ items: filtered }, null, 2) }],
+    };
+  }
+);
+
+const transport = new StreamableHTTPServerTransport({ server: mcp });
+
+/* ---------------- HTTP Server ---------------- */
+const server = createServer(async (req, res) => {
+  try {
+    const url = new URL(req.url || "/", `http://${req.headers.host}`);
+    const pathname = url.pathname;
+
+    if (pathname === "/mcp") {
+      return transport.handleRequest(req, res);
+    }
+
+    if (pathname === "/") {
+      res.statusCode = 302;
+      res.setHeader("Location", "/ui/search");
+      withSecurityHeaders(res);
+      return res.end();
+    }
+
+    if (pathname === "/ui/search") {
+      return sendFile(res, 200, "ui-search.html");
+    }
+
+    if (pathname === "/ui/videos") {
+      return sendFile(res, 200, "ui-videos.html");
+    }
+
+    if (pathname === "/api/videos") {
+      const { ok, status, json } = await fetchWorkerJson("/my-channel/videos");
+      if (!ok) return sendJson(res, status, json);
+      return sendJson(res, 200, { items: (json.items || []).map(pickVideoFields) });
+    }
+
+    if (pathname === "/api/search") {
+      const q = url.searchParams.get("q") || "";
+      const { json } = await fetchWorkerJson("/my-channel/videos");
+      const items = (json.items || []).map(pickVideoFields);
+      const query = normalizeText(q);
+      const filtered = items.filter((v) =>
+        normalizeText(`${v.title} ${v.channelTitle}`).includes(query)
+      );
+      return sendJson(res, 200, { items: filtered });
+    }
+
+    return sendText(res, 404, "Not Found");
+  } catch (err) {
+    console.error(err);
+    return sendText(res, 500, "Internal Server Error");
+  }
+});
+
+server.listen(PORT, () => {
+  console.log(`Server running on http://localhost:${PORT}`);
+});
