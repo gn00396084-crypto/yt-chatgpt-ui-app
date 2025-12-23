@@ -31,6 +31,8 @@ function withSecurityHeaders(res, contentType = "text/html; charset=utf-8") {
   res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
   res.setHeader("Cross-Origin-Resource-Policy", "same-origin");
 
+  // UI uses inline <style>/<script>
+  // allow YouTube embeds via frame-src
   const csp = [
     "default-src 'self'",
     "base-uri 'self'",
@@ -80,125 +82,46 @@ async function fetchWorkerJson(workerPath) {
   return { ok: r.ok, status: r.status, json };
 }
 
+/* ---------------- Helpers ---------------- */
 function normalizeText(s) {
   return String(s || "").toLowerCase().trim();
 }
 
-function pickVideoFields(v) {
-  return {
-    videoId: v.videoId || v.id?.videoId || v.id,
-    title: v.title || v.snippet?.title || "",
-    channelTitle: v.channelTitle || v.snippet?.channelTitle || "",
-    publishedAt: v.publishedAt || v.snippet?.publishedAt || "",
-    thumbnailUrl:
-      v.thumbnailUrl ||
-      v.thumbnails?.medium?.url ||
-      v.snippet?.thumbnails?.medium?.url ||
-      v.snippet?.thumbnails?.high?.url ||
-      "",
-  };
-}
+/**
+ * Accept:
+ * - "INyQfaZ8Xck"
+ * - "https://www.youtube.com/watch?v=INyQfaZ8Xck"
+ * - "https://youtu.be/INyQfaZ8Xck"
+ * - "https://www.youtube.com/embed/INyQfaZ8Xck"
+ * Return: 11-char videoId or ""
+ */
+function extractVideoId(input) {
+  if (!input) return "";
+  const s = String(input).trim();
 
-/* ---------------- MCP ---------------- */
-const mcp = new McpServer({ name: "yt-ui-mcp", version: "1.0.0" });
+  // already looks like a youtube video id
+  if (/^[a-zA-Z0-9_-]{11}$/.test(s)) return s;
 
-mcp.tool(
-  "list_videos",
-  { limit: z.number().int().min(1).max(200).optional() },
-  async ({ limit }) => {
-    const { ok, status, json } = await fetchWorkerJson("/my-channel/videos");
-    if (!ok) {
-      return {
-        content: [{ type: "text", text: `Worker error ${status}` }],
-      };
-    }
-    const items = (json.items || json.videos || [])
-      .slice(0, limit ?? 50)
-      .map(pickVideoFields);
-
-    return {
-      content: [{ type: "text", text: JSON.stringify({ items }, null, 2) }],
-    };
-  }
-);
-
-mcp.tool(
-  "search_videos",
-  { q: z.string().optional() },
-  async ({ q }) => {
-    const { ok, status, json } = await fetchWorkerJson("/my-channel/videos");
-    if (!ok) {
-      return {
-        content: [{ type: "text", text: `Worker error ${status}` }],
-      };
-    }
-
-    const items = (json.items || json.videos || []).map(pickVideoFields);
-    const query = normalizeText(q);
-
-    const filtered = !query
-      ? []
-      : items.filter((v) =>
-          normalizeText(`${v.title} ${v.channelTitle}`).includes(query)
-        );
-
-    return {
-      content: [{ type: "text", text: JSON.stringify({ items: filtered }, null, 2) }],
-    };
-  }
-);
-
-const transport = new StreamableHTTPServerTransport({ server: mcp });
-
-/* ---------------- HTTP Server ---------------- */
-const server = createServer(async (req, res) => {
+  // try parse as URL
   try {
-    const url = new URL(req.url || "/", `http://${req.headers.host}`);
-    const pathname = url.pathname;
+    const u = new URL(s);
 
-    if (pathname === "/mcp") {
-      return transport.handleRequest(req, res);
+    // watch?v=
+    const v = u.searchParams.get("v");
+    if (v && /^[a-zA-Z0-9_-]{11}$/.test(v)) return v;
+
+    // youtu.be/<id>
+    if (u.hostname.includes("youtu.be")) {
+      const id = u.pathname.replace("/", "");
+      if (/^[a-zA-Z0-9_-]{11}$/.test(id)) return id;
     }
 
-    if (pathname === "/") {
-      res.statusCode = 302;
-      res.setHeader("Location", "/ui/search");
-      withSecurityHeaders(res);
-      return res.end();
-    }
-
-    if (pathname === "/ui/search") {
-      return sendFile(res, 200, "ui-search.html");
-    }
-
-    if (pathname === "/ui/videos") {
-      return sendFile(res, 200, "ui-videos.html");
-    }
-
-    if (pathname === "/api/videos") {
-      const { ok, status, json } = await fetchWorkerJson("/my-channel/videos");
-      if (!ok) return sendJson(res, status, json);
-      return sendJson(res, 200, { items: (json.items || []).map(pickVideoFields) });
-    }
-
-    if (pathname === "/api/search") {
-      const q = url.searchParams.get("q") || "";
-      const { json } = await fetchWorkerJson("/my-channel/videos");
-      const items = (json.items || []).map(pickVideoFields);
-      const query = normalizeText(q);
-      const filtered = items.filter((v) =>
-        normalizeText(`${v.title} ${v.channelTitle}`).includes(query)
-      );
-      return sendJson(res, 200, { items: filtered });
-    }
-
-    return sendText(res, 404, "Not Found");
-  } catch (err) {
-    console.error(err);
-    return sendText(res, 500, "Internal Server Error");
+    // /embed/<id>
+    const m = u.pathname.match(/\/embed\/([a-zA-Z0-9_-]{11})/);
+    if (m) return m[1];
+  } catch {
+    // not a URL, continue below
   }
-});
 
-server.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
-});
+  // fallback: find v=XXXXXXXXXXX anywhere
+  const
