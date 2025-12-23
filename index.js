@@ -1,29 +1,26 @@
+// index.js (FINAL)
+
 import { createServer } from "node:http";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 
-import { registerResources, debugListResources, debugInspectHtml } from "./mcp.resources.js";
-import { registerTools } from "./mcp.tools.js";
+import { registerAll } from "./mcp.register.js";
+import { debugListResources, debugInspectHtml } from "./mcp.resources.js";
 
 const PORT = Number(process.env.PORT || 3000);
 
 function json(res, obj, status = 200) {
   res.writeHead(status, {
     "Content-Type": "application/json; charset=utf-8",
-    "Cache-Control": "no-store",
+    "Cache-Control": "no-store"
   });
   res.end(JSON.stringify(obj, null, 2));
 }
 
 function okDebugToken(url) {
+  // 可選：Railway env 設 DEBUG_TOKEN
   if (!process.env.DEBUG_TOKEN) return true;
   return url.searchParams.get("token") === process.env.DEBUG_TOKEN;
-}
-
-// ✅ registerAll 就地定義（唔需要 mcp.registerAll.js）
-function registerAll(mcp, env) {
-  registerResources(mcp);
-  registerTools(mcp, env);
 }
 
 async function main() {
@@ -38,14 +35,15 @@ async function main() {
     const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
     const path = url.pathname.replace(/\/+$/, "") || "/";
 
-    // ✅ debug endpoints（一定要放 Not Found 之前）
+    // ✅ DEBUG: MUST be before MCP handler
     if (path === "/debug/resources") {
       if (!okDebugToken(url)) return json(res, { error: "unauthorized" }, 401);
       return json(res, { ok: true, resources: debugListResources() });
     }
+
     if (path.startsWith("/debug/ui/")) {
       if (!okDebugToken(url)) return json(res, { error: "unauthorized" }, 401);
-      const key = path.split("/").pop();
+      const key = path.split("/").pop(); // home|search|videos
       return json(res, { ok: true, inspect: debugInspectHtml(key) });
     }
 
