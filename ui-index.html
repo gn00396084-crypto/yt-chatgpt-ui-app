@@ -4,11 +4,12 @@
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
 
+  <!-- CSP：單行，避免 validator 誤判 -->
   <meta http-equiv="Content-Security-Policy"
         content="default-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'; object-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:;">
 
-  <!-- ✅ 必須：同 mcp.resources.js 的 widgetType 完全一致（而且唔用 :） -->
-  <meta name="app:type" content="com.yourname.ytfinder.home"/>
+  <!-- ✅ 必須：與 mcp.resources.js 的 widgetType 完全一致（唯一、無冒號） -->
+  <meta name="app:type" content="io.github.yourgithub.ytfinder.home"/>
 
   <title>YouTube Finder</title>
 
@@ -26,7 +27,7 @@
   </style>
 </head>
 
-<body data-widget-type="com.yourname.ytfinder.home">
+<body data-widget-type="io.github.yourgithub.ytfinder.home">
   <div class="card">
     <h2 style="margin:0 0 6px">YouTube Finder</h2>
     <div class="muted">選擇功能頁面</div>
@@ -49,14 +50,19 @@
     <small id="status">等待操作…</small>
   </div>
 
+  <!-- ✅ 必須：module script，且只保留一個入口 -->
   <script type="module">
-    // ✅ 同上面一致
-    const WIDGET_TYPE = "com.yourname.ytfinder.home";
+    // ✅ 與 meta / body / mcp.resources.js 完全一致
+    const WIDGET_TYPE = "io.github.yourgithub.ytfinder.home";
 
-    function setStatus(msg){ document.getElementById("status").textContent = msg; }
+    function setStatus(msg){
+      document.getElementById("status").textContent = msg;
+    }
 
     async function callTool(name, args){
-      if (!window.openai?.callTool) throw new Error("openai bridge not available");
+      if (!window.openai?.callTool) {
+        throw new Error("openai bridge not available");
+      }
       return window.openai.callTool(name, args);
     }
 
@@ -81,7 +87,10 @@
     });
 
     (function(){
-      if (window.openai?.toolOutput) setStatus("已收到工具輸出。");
+      if (window.openai?.toolOutput) {
+        setStatus("已收到工具輸出。");
+      }
+      // Debug 用
       window.__WIDGET_TYPE__ = WIDGET_TYPE;
     })();
   </script>
