@@ -3,11 +3,11 @@
 //   CF_WORKER_BASE_URL = https://xxx.workers.dev
 //
 // Routes:
-//   GET  /            -> redirect to /ui/search
-//   GET  /ui/search   -> serve ui-search.html
+//   GET  /            -> redirect to /ui/videos
 //   GET  /ui/videos   -> serve ui-videos.html
-//   GET  /api/videos  -> forward to CF worker /my-channel/videos (normalized)
-//   GET  /api/search?q= -> server-side filter from worker results (normalized)
+//   GET  /ui/search   -> serve ui-search.html (optional)
+//   GET  /api/videos  -> forward to CF worker /my-channel/videos (normalized, timeout)
+//   GET  /api/search?q= -> server-side filter (normalized, timeout)
 //   GET  /health      -> healthcheck
 //   POST /mcp         -> MCP streamable HTTP transport
 
@@ -40,8 +40,6 @@ function withSecurityHeaders(res, contentType = "text/html; charset=utf-8") {
   res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
   res.setHeader("Cross-Origin-Resource-Policy", "same-origin");
 
-  // UI uses inline <style>/<script>, so allow unsafe-inline for self only.
-  // Allow youtube embeds via frame-src.
   const csp = [
     "default-src 'self'",
     "base-uri 'self'",
@@ -78,61 +76,33 @@ async function sendFile(res, status, filename, contentType = "text/html; charset
   res.end(buf);
 }
 
-async function fetchWorkerJson(workerPath) {
-  const url = new URL(workerPath, CF_WORKER_BASE_URL).toString();
-  const r = await fetch(url, { headers: { accept: "application/json" } });
-  const text = await r.text();
-  let json;
-  try {
-    json = JSON.parse(text);
-  } catch {
-    json = { raw: text };
-  }
-  return { ok: r.ok, status: r.status, json };
-}
-
 /* ---------------- Helpers ---------------- */
 function normalizeText(s) {
   return String(s || "").toLowerCase().trim();
 }
 
-/**
- * Accept:
- * - "INyQfaZ8Xck"
- * - "https://www.youtube.com/watch?v=INyQfaZ8Xck"
- * - "https://youtu.be/INyQfaZ8Xck"
- * - "https://www.youtube.com/embed/INyQfaZ8Xck"
- * Return: 11-char videoId or ""
- */
 function extractVideoId(input) {
   if (!input) return "";
   const s = String(input).trim();
 
-  // already looks like a youtube video id
   if (/^[a-zA-Z0-9_-]{11}$/.test(s)) return s;
 
-  // try parse as URL
   try {
     const u = new URL(s);
-
-    // watch?v=
     const v = u.searchParams.get("v");
     if (v && /^[a-zA-Z0-9_-]{11}$/.test(v)) return v;
 
-    // youtu.be/<id>
     if (u.hostname.includes("youtu.be")) {
       const id = u.pathname.replace("/", "");
       if (/^[a-zA-Z0-9_-]{11}$/.test(id)) return id;
     }
 
-    // /embed/<id>
     const m = u.pathname.match(/\/embed\/([a-zA-Z0-9_-]{11})/);
     if (m) return m[1];
   } catch {
     // not a URL
   }
 
-  // fallback: find v=XXXXXXXXXXX anywhere
   const m2 = s.match(/[?&]v=([a-zA-Z0-9_-]{11})/);
   if (m2) return m2[1];
 
@@ -140,7 +110,6 @@ function extractVideoId(input) {
 }
 
 function pickVideoFields(v) {
-  // Accept many shapes (worker might return url/link/id object)
   const rawId = v.videoId || v.id?.videoId || v.id || v.url || v.link;
   const videoId = extractVideoId(rawId);
 
@@ -158,23 +127,50 @@ function pickVideoFields(v) {
   return { videoId, title, channelTitle, publishedAt, thumbnailUrl };
 }
 
+/* ---------------- Worker fetch with timeout ---------------- */
+async function fetchWorkerJson(workerPath) {
+  const url = new URL(workerPath, CF_WORKER_BASE_URL).toString();
+
+  // 10s timeout
+  const controller = new AbortController();
+  const t = setTimeout(() => controller.abort(), 10000);
+
+  try {
+    const r = await fetch(url, {
+      headers: { accept: "application/json" },
+      signal: controller.signal,
+    });
+
+    const text = await r.text();
+    let json;
+    try {
+      json = JSON.parse(text);
+    } catch {
+      json = { raw: text };
+    }
+    return { ok: r.ok, status: r.status, json };
+  } catch (e) {
+    return {
+      ok: false,
+      status: 504,
+      json: { error: "Worker fetch failed/timeout", detail: String(e) },
+    };
+  } finally {
+    clearTimeout(t);
+  }
+}
+
 /* ---------------- MCP ---------------- */
 const mcp = new McpServer({ name: "yt-ui-mcp", version: "1.0.0" });
 
-// Tool: list videos
 mcp.tool(
   "list_videos",
   { limit: z.number().int().min(1).max(200).optional() },
   async ({ limit }) => {
     const { ok, status, json } = await fetchWorkerJson("/my-channel/videos");
     if (!ok) {
-      return {
-        content: [
-          { type: "text", text: `Worker error ${status}: ${JSON.stringify(json).slice(0, 300)}` },
-        ],
-      };
+      return { content: [{ type: "text", text: `Worker error ${status}: ${JSON.stringify(json).slice(0, 300)}` }] };
     }
-
     const items = (json.items || json.videos || [])
       .map(pickVideoFields)
       .filter((x) => x.videoId)
@@ -184,23 +180,17 @@ mcp.tool(
   }
 );
 
-// Tool: search videos
 mcp.tool(
   "search_videos",
   { q: z.string().optional() },
   async ({ q }) => {
     const { ok, status, json } = await fetchWorkerJson("/my-channel/videos");
     if (!ok) {
-      return {
-        content: [
-          { type: "text", text: `Worker error ${status}: ${JSON.stringify(json).slice(0, 300)}` },
-        ],
-      };
+      return { content: [{ type: "text", text: `Worker error ${status}: ${JSON.stringify(json).slice(0, 300)}` }] };
     }
 
     const items = (json.items || json.videos || []).map(pickVideoFields).filter((x) => x.videoId);
     const query = normalizeText(q);
-
     const filtered = !query
       ? []
       : items.filter((v) => normalizeText(`${v.title} ${v.channelTitle}`).includes(query));
@@ -225,20 +215,21 @@ const server = createServer(async (req, res) => {
     // UI routes
     if (pathname === "/") {
       res.statusCode = 302;
-      res.setHeader("Location", "/ui/search");
+      res.setHeader("Location", "/ui/videos");
       withSecurityHeaders(res, "text/plain; charset=utf-8");
       return res.end("Redirecting…");
-    }
-
-    if (pathname === "/ui/search") {
-      return await sendFile(res, 200, "ui-search.html");
     }
 
     if (pathname === "/ui/videos") {
       return await sendFile(res, 200, "ui-videos.html");
     }
 
-    // API: videos (normalized)
+    if (pathname === "/ui/search") {
+      // optional; you can keep your existing file
+      return await sendFile(res, 200, "ui-search.html");
+    }
+
+    // API: videos (normalized, timeout)
     if (pathname === "/api/videos") {
       const { ok, status, json } = await fetchWorkerJson("/my-channel/videos");
       if (!ok) return sendJson(res, status, json);
@@ -250,9 +241,10 @@ const server = createServer(async (req, res) => {
       return sendJson(res, 200, { items });
     }
 
-    // API: search (normalized)
+    // API: search (normalized, timeout)
     if (pathname === "/api/search") {
       const q = url.searchParams.get("q") || "";
+
       const { ok, status, json } = await fetchWorkerJson("/my-channel/videos");
       if (!ok) return sendJson(res, status, json);
 
@@ -273,7 +265,6 @@ const server = createServer(async (req, res) => {
       return sendJson(res, 200, { ok: true, service: "yt-ui-mcp", time: new Date().toISOString() });
     }
 
-    // 404
     return sendText(res, 404, "Not Found");
   } catch (err) {
     console.error(err);
@@ -283,6 +274,6 @@ const server = createServer(async (req, res) => {
 
 server.listen(PORT, () => {
   console.log(`Server listening on http://localhost:${PORT}`);
-  console.log(`UI: /ui/search , /ui/videos`);
+  console.log(`UI: /ui/videos`);
   console.log(`API: /api/videos , /api/search?q=...`);
 });
