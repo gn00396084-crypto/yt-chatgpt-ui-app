@@ -11,6 +11,7 @@
       --text:#111;
       --muted:rgba(0,0,0,.65);
       --border:rgba(0,0,0,.08);
+      --card:#fff;
     }
     *{ box-sizing:border-box; }
     body{
@@ -37,6 +38,11 @@
       gap:10px;
     }
     .title{ font-weight:800; }
+    .nav{
+      display:flex;
+      gap:8px;
+      align-items:center;
+    }
     .nav a{
       text-decoration:none;
       color:#111;
@@ -68,8 +74,12 @@
       background:#fff;
       color:var(--muted);
     }
+    .hint{
+      font-size:12px;
+      color:var(--muted);
+    }
 
-    /* ===== Horizontal Row ===== */
+    /* ===== Mode B: Thumbnail + Link (Horizontal Row) ===== */
     .row-wrap{
       position:relative;
       max-width:1100px;
@@ -79,11 +89,13 @@
     .row{
       display:grid;
       grid-auto-flow:column;
-      grid-auto-columns:minmax(240px,320px);
+      grid-auto-columns:minmax(260px, 340px);
       gap:16px;
       overflow-x:auto;
       padding:6px 6px 12px;
       scroll-snap-type:x mandatory;
+      scroll-behavior:smooth;
+      -webkit-overflow-scrolling:touch;
       scrollbar-width:none;
     }
     .row::-webkit-scrollbar{ display:none; }
@@ -100,117 +112,100 @@
       font-weight:800;
       cursor:pointer;
       z-index:5;
+      user-select:none;
     }
     .row-nav.left{ left:6px; }
     .row-nav.right{ right:6px; }
 
-    .g-card{
-      position:relative;
+    .card{
+      scroll-snap-align:start;
+      border:1px solid var(--border);
+      background:var(--card);
       border-radius:14px;
       overflow:hidden;
+      box-shadow:0 6px 18px rgba(0,0,0,.05);
+      display:flex;
+      flex-direction:column;
+    }
+
+    /* clickable thumbnail (link) */
+    .thumbLink{
+      display:block;
+      position:relative;
       aspect-ratio:16/9;
       background:#eee;
-      cursor:pointer;
-      scroll-snap-align:start;
-      box-shadow:0 6px 18px rgba(0,0,0,.05);
+      overflow:hidden;
+      text-decoration:none;
+      color:inherit;
     }
-    .g-card img{
-      width:100%; height:100%;
+    .thumbLink img{
+      width:100%;
+      height:100%;
       object-fit:cover;
+      display:block;
       transition:transform .35s ease;
+      transform:scale(1.01);
     }
-    .g-card:hover img{ transform:scale(1.06); }
+    .thumbLink:hover img{ transform:scale(1.06); }
 
-    .g-overlay{
-      position:absolute; inset:0;
-      background:linear-gradient(to bottom, rgba(0,0,0,0), rgba(0,0,0,.65));
-      opacity:0;
-      transition:.2s;
-      display:flex;
-      align-items:flex-end;
-      padding:12px;
-    }
-    .g-card:hover .g-overlay{ opacity:1; }
-
-    .g-title{
-      color:#fff;
-      font-size:13px;
-      font-weight:700;
-      line-height:1.3;
-      text-shadow:0 2px 10px rgba(0,0,0,.45);
-    }
-
-    .g-play{
-      position:absolute; inset:0;
-      display:flex;
-      align-items:center;
-      justify-content:center;
-    }
-    .g-play span{
-      width:52px; height:52px;
-      border-radius:50%;
+    .badge{
+      position:absolute;
+      right:10px;
+      bottom:10px;
+      padding:6px 10px;
+      border-radius:999px;
       background:rgba(0,0,0,.55);
       color:#fff;
-      font-size:22px;
-      display:flex;
-      align-items:center;
-      justify-content:center;
+      font-size:12px;
+      font-weight:700;
+      backdrop-filter:blur(6px);
     }
+
+    .body{
+      padding:12px;
+      display:flex;
+      flex-direction:column;
+      gap:8px;
+      flex:1;
+    }
+    .vtitle{
+      font-size:14px;
+      font-weight:800;
+      line-height:1.35;
+    }
+    .meta{
+      font-size:12px;
+      color:var(--muted);
+      display:flex;
+      justify-content:space-between;
+      gap:10px;
+    }
+
+    .actions{
+      margin-top:auto;
+      display:flex;
+      gap:8px;
+    }
+    .linkbtn{
+      flex:1;
+      text-align:center;
+      padding:10px 12px;
+      border-radius:10px;
+      border:1px solid var(--border);
+      background:#fff;
+      text-decoration:none;
+      color:#111;
+      font-weight:800;
+      font-size:13px;
+    }
+    .linkbtn:hover{ background:rgba(0,0,0,.05); }
 
     .empty{
       max-width:1100px;
-      margin:12px auto;
+      margin:12px auto 24px;
       padding:0 16px;
       color:var(--muted);
       white-space:pre-wrap;
-    }
-
-    /* ===== Modal (Lazy iframe) ===== */
-    body.modal-open{ overflow:hidden; }
-
-    .yt-modal{
-      position:fixed;
-      inset:0;
-      display:none;
-      z-index:9999;
-    }
-    .yt-modal.is-open{ display:block; }
-
-    .yt-backdrop{
-      position:absolute;
-      inset:0;
-      background:rgba(0,0,0,.6);
-    }
-    .yt-panel{
-      position:relative;
-      width:min(960px, calc(100vw - 24px));
-      margin:6vh auto 0;
-      background:#000;
-      border-radius:14px;
-      overflow:hidden;
-    }
-    .yt-close{
-      position:absolute;
-      top:8px; right:8px;
-      width:36px; height:36px;
-      border-radius:10px;
-      border:0;
-      background:rgba(255,255,255,.15);
-      color:#fff;
-      font-size:18px;
-      cursor:pointer;
-      z-index:2;
-    }
-    .yt-ratio{
-      position:relative;
-      width:100%;
-      padding-top:56.25%;
-    }
-    .yt-ratio iframe{
-      position:absolute;
-      inset:0;
-      width:100%;
-      height:100%;
     }
   </style>
 </head>
@@ -220,7 +215,7 @@
 <header>
   <div class="wrap">
     <div class="row-top">
-      <div class="title">🎧 最新影片</div>
+      <div class="title">🖼️ 模式 B：縮圖＋連結（無 iframe）</div>
       <div class="nav">
         <a class="active" href="/ui/videos">首頁</a>
         <a href="/ui/search">搜尋</a>
@@ -229,33 +224,23 @@
     <div class="toolbar">
       <button class="btn" onclick="loadVideos()">重新載入</button>
       <span id="count" class="pill">—</span>
+      <span class="hint">點縮圖 / 按鈕 → 開新分頁播放</span>
     </div>
   </div>
 </header>
 
 <div class="row-wrap">
-  <button class="row-nav left" onclick="scrollRow(-1)">‹</button>
+  <button class="row-nav left" aria-label="Prev" onclick="scrollRow(-1)">‹</button>
   <div id="videoRow" class="row"></div>
-  <button class="row-nav right" onclick="scrollRow(1)">›</button>
+  <button class="row-nav right" aria-label="Next" onclick="scrollRow(1)">›</button>
 </div>
 
 <div id="empty" class="empty" style="display:none;"></div>
-
-<!-- ===== Modal ===== -->
-<div id="ytModal" class="yt-modal">
-  <div class="yt-backdrop" onclick="closeYtModal()"></div>
-  <div class="yt-panel">
-    <button class="yt-close" onclick="closeYtModal()">✕</button>
-    <div id="ytContainer" class="yt-ratio"></div>
-  </div>
-</div>
 
 <script>
   const rowEl = document.getElementById("videoRow");
   const emptyEl = document.getElementById("empty");
   const countEl = document.getElementById("count");
-  const modal = document.getElementById("ytModal");
-  const ytContainer = document.getElementById("ytContainer");
 
   function escapeHtml(s){
     return String(s||"").replace(/[&<>"']/g, c => ({
@@ -263,64 +248,53 @@
     }[c]));
   }
 
-  /* ===== Lazy iframe ===== */
-  function openYtModal(videoId){
-    if (!videoId || !/^[a-zA-Z0-9_-]{11}$/.test(videoId)) return;
-
-    ytContainer.innerHTML = `
-      <iframe
-        src="https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&rel=0"
-        frameborder="0"
-        allow="autoplay; encrypted-media; picture-in-picture"
-        allowfullscreen>
-      </iframe>
-    `;
-    modal.classList.add("is-open");
-    document.body.classList.add("modal-open");
-    clearPlayParam();
-  }
-
-  function closeYtModal(){
-    modal.classList.remove("is-open");
-    document.body.classList.remove("modal-open");
-    ytContainer.innerHTML = ""; // destroy iframe
-  }
-
-  document.addEventListener("keydown", e => {
-    if (e.key === "Escape" && modal.classList.contains("is-open")) closeYtModal();
-  });
-
-  function render(items){
-    rowEl.innerHTML = items.map(v => `
-      <div class="g-card" onclick="openYtModal('${v.videoId}')">
-        <img src="${v.thumbnailUrl}" alt="">
-        <div class="g-play"><span>▶</span></div>
-        <div class="g-overlay">
-          <div class="g-title">${escapeHtml(v.title)}</div>
-        </div>
-      </div>
-    `).join("");
+  function fmtDate(s){
+    if(!s) return "";
+    try { return new Date(s).toISOString().slice(0,10); } catch { return ""; }
   }
 
   function scrollRow(dir){
-    const w = rowEl.firstElementChild?.getBoundingClientRect().width || 280;
+    const w = rowEl.firstElementChild?.getBoundingClientRect().width || 300;
     rowEl.scrollBy({ left: dir * (w + 16), behavior:"smooth" });
   }
 
-  /* ===== ?play=VIDEO_ID support ===== */
-  function getPlayParam(){
-    const p = new URLSearchParams(location.search);
-    const id = p.get("play");
-    return (id && /^[a-zA-Z0-9_-]{11}$/.test(id)) ? id : null;
-  }
-  function clearPlayParam(){
-    const url = new URL(location.href);
-    url.searchParams.delete("play");
-    history.replaceState({}, "", url);
+  function render(items){
+    rowEl.innerHTML = items.map(v => {
+      const vid = (v.videoId && /^[a-zA-Z0-9_-]{11}$/.test(v.videoId)) ? v.videoId : "";
+      const title = escapeHtml(v.title || "(no title)");
+      const thumb = v.thumbnailUrl || (vid ? `https://i.ytimg.com/vi/${vid}/mqdefault.jpg` : "");
+      const date = fmtDate(v.publishedAt);
+      const ch = escapeHtml(v.channelTitle || "");
+
+      // Mode B: only links (no iframe)
+      const ytWatch = vid ? `https://www.youtube.com/watch?v=${vid}` : "#";
+      const ytShort = vid ? `https://youtu.be/${vid}` : "#";
+
+      return `
+        <div class="card">
+          <a class="thumbLink" href="${ytShort}" target="_blank" rel="noopener">
+            <img src="${thumb}" alt="${title}">
+            <div class="badge">▶ 播放</div>
+          </a>
+          <div class="body">
+            <div class="vtitle">${title}</div>
+            <div class="meta">
+              <span>${ch}</span>
+              <span>${date}</span>
+            </div>
+            <div class="actions">
+              <a class="linkbtn" href="${ytShort}" target="_blank" rel="noopener">YouTube</a>
+              <a class="linkbtn" href="${ytWatch}" target="_blank" rel="noopener">Watch</a>
+            </div>
+          </div>
+        </div>
+      `;
+    }).join("");
   }
 
   async function loadVideos(){
     emptyEl.style.display="none";
+    emptyEl.textContent="";
     rowEl.innerHTML="";
     countEl.textContent="Loading…";
 
@@ -330,21 +304,25 @@
       if(!res.ok) throw new Error(text);
 
       const data = JSON.parse(text);
-      const items = (data.items || []).filter(v => v.videoId);
+      const items = (data.items || []).filter(x => x && x.videoId);
       countEl.textContent = `${items.length} videos`;
       render(items);
 
-      // 🔔 auto play if ?play=VIDEO_ID
-      const autoPlayId = getPlayParam();
-      if (autoPlayId) {
-        setTimeout(() => openYtModal(autoPlayId), 200);
-      }
     }catch(e){
       countEl.textContent="Error";
       emptyEl.style.display="block";
-      emptyEl.textContent=String(e).slice(0,800);
+      emptyEl.textContent = String(e).slice(0, 1000);
     }
   }
+
+  // Desktop: wheel -> horizontal scroll
+  rowEl.addEventListener("wheel", (e) => {
+    if (e.shiftKey) return;
+    if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+      e.preventDefault();
+      rowEl.scrollBy({ left: e.deltaY, behavior: "auto" });
+    }
+  }, { passive: false });
 
   loadVideos();
 </script>
