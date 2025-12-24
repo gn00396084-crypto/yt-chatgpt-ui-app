@@ -1,6 +1,8 @@
-// index.js — FINAL (UI + API + MCP, cache-first, timeout-safe)
+// index.js — FINAL (stale-while-revalidate, no more refresh timeout UI)
 // Env required:
 //   CF_WORKER_BASE_URL = https://xxx.workers.dev
+// Optional:
+//   SITE_BASE_URL = https://yourdomain.com
 
 import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
@@ -13,11 +15,12 @@ import { z } from "zod";
 
 const PORT = Number(process.env.PORT || 3000);
 const CF_WORKER_BASE_URL = process.env.CF_WORKER_BASE_URL;
-
 if (!CF_WORKER_BASE_URL) {
   console.error("Missing CF_WORKER_BASE_URL env, e.g. https://xxx.workers.dev");
   process.exit(1);
 }
+
+const SITE_BASE_URL = process.env.SITE_BASE_URL || "";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -41,9 +44,7 @@ function withSecurityHeaders(res, contentType = "text/html; charset=utf-8") {
     "style-src 'self' 'unsafe-inline'",
     "script-src 'self' 'unsafe-inline'",
     "connect-src 'self' https:",
-    // 注意：ChatGPT App 不會 render iframe；你網站如需 iframe 可另外放寬 frame-src
   ].join("; ");
-
   res.setHeader("Content-Security-Policy", csp);
 }
 
@@ -72,18 +73,9 @@ function normalizeText(s) {
   return String(s || "").toLowerCase().trim();
 }
 
-/**
- * Accept:
- * - "INyQfaZ8Xck"
- * - "https://www.youtube.com/watch?v=INyQfaZ8Xck"
- * - "https://youtu.be/INyQfaZ8Xck"
- * - "https://www.youtube.com/embed/INyQfaZ8Xck"
- * Return: 11-char videoId or ""
- */
 function extractVideoId(input) {
   if (!input) return "";
   const s = String(input).trim();
-
   if (/^[a-zA-Z0-9_-]{11}$/.test(s)) return s;
 
   try {
@@ -98,9 +90,7 @@ function extractVideoId(input) {
 
     const m = u.pathname.match(/\/embed\/([a-zA-Z0-9_-]{11})/);
     if (m) return m[1];
-  } catch {
-    // not a URL
-  }
+  } catch {}
 
   const m2 = s.match(/[?&]v=([a-zA-Z0-9_-]{11})/);
   if (m2) return m2[1];
@@ -126,19 +116,17 @@ function pickVideoFields(v) {
   return { videoId, title, channelTitle, publishedAt, thumbnailUrl };
 }
 
-/* ---------------- Worker fetch with timeout ---------------- */
-async function fetchWorkerJson(workerPath) {
+/* ---------------- Worker fetch with shorter timeout ---------------- */
+async function fetchWorkerJson(workerPath, timeoutMs = 3000) {
   const url = new URL(workerPath, CF_WORKER_BASE_URL).toString();
-
   const controller = new AbortController();
-  const t = setTimeout(() => controller.abort(), 10000);
+  const t = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     const r = await fetch(url, {
       headers: { accept: "application/json" },
       signal: controller.signal,
     });
-
     const text = await r.text();
     let json;
     try {
@@ -148,87 +136,105 @@ async function fetchWorkerJson(workerPath) {
     }
     return { ok: r.ok, status: r.status, json };
   } catch (e) {
-    return {
-      ok: false,
-      status: 504,
-      json: { error: "Worker fetch failed/timeout", detail: String(e) },
-    };
+    return { ok: false, status: 504, json: { error: "timeout", detail: String(e) } };
   } finally {
     clearTimeout(t);
   }
 }
 
-/* ---------------- Cache-first for /api/videos ---------------- */
+/* ---------------- Stale-while-revalidate cache ---------------- */
 let videosCache = { items: [], ts: 0 };
-const CACHE_TTL_MS = 60_000; // 60s
+let refreshing = false;
+const SOFT_TTL_MS = 60_000;   // after this, we will start background refresh
+const HARD_TTL_MS = 24 * 60 * 60 * 1000; // keep stale up to 24h (so UI never blanks)
 
-async function getVideosCached() {
-  const now = Date.now();
+/**
+ * Background refresh (never blocks UI)
+ */
+async function refreshVideosInBackground() {
+  if (refreshing) return;
+  refreshing = true;
+  try {
+    const { ok, status, json } = await fetchWorkerJson("/my-channel/videos", 5000);
+    if (!ok) return;
 
-  // fresh cache
-  if (videosCache.items.length && now - videosCache.ts < CACHE_TTL_MS) {
-    return { ok: true, status: 200, items: videosCache.items, cached: true, stale: false };
-  }
-
-  // refresh from worker
-  const { ok, status, json } = await fetchWorkerJson("/my-channel/videos");
-  if (ok) {
     const items = (json.items || json.videos || [])
       .map(pickVideoFields)
       .filter((x) => x.videoId);
 
-    videosCache = { items, ts: now };
-    return { ok: true, status: 200, items, cached: false, stale: false };
+    if (items.length) {
+      videosCache = { items, ts: Date.now() };
+    }
+  } finally {
+    refreshing = false;
   }
+}
 
-  // fallback to stale cache
-  if (videosCache.items.length) {
+/**
+ * Always returns quickly.
+ * - If we have any cache (even stale) -> return it immediately (200)
+ * - If cache empty -> try worker once (max 3s); if fail -> return 200 with empty list but includes error meta
+ */
+async function getVideosSWR() {
+  const now = Date.now();
+  const hasCache = videosCache.items.length > 0;
+  const cacheAge = hasCache ? (now - videosCache.ts) : null;
+
+  // If cache exists, return immediately (even if stale)
+  if (hasCache) {
+    // trigger background refresh when cache is old
+    if (cacheAge > SOFT_TTL_MS && cacheAge < HARD_TTL_MS) {
+      refreshVideosInBackground();
+    }
     return {
-      ok: true,
       status: 200,
       items: videosCache.items,
-      cached: true,
-      stale: true,
-      workerStatus: status,
-      workerError: json,
+      meta: { cached: true, stale: cacheAge > SOFT_TTL_MS, cacheAgeSec: Math.floor(cacheAge / 1000) },
     };
   }
 
-  // no cache and worker failed
-  return { ok: false, status, error: json };
+  // No cache yet -> do one short worker attempt
+  const { ok, status, json } = await fetchWorkerJson("/my-channel/videos", 3000);
+  if (ok) {
+    const items = (json.items || json.videos || [])
+      .map(pickVideoFields)
+      .filter((x) => x.videoId);
+    videosCache = { items, ts: now };
+    return { status: 200, items, meta: { cached: false, stale: false, cacheAgeSec: 0 } };
+  }
+
+  // Still return 200 so UI won't show "Request timeout" as an error page
+  return {
+    status: 200,
+    items: [],
+    meta: { cached: false, stale: true, cacheAgeSec: null, workerStatus: status, workerError: json },
+  };
 }
 
-/* ---------------- MCP (TEXT ONLY, stable in ChatGPT App) ---------------- */
+/* ---------------- MCP (text-only, uses SWR) ---------------- */
 const mcp = new McpServer({ name: "yt-ui-mcp", version: "1.0.0" });
 
-/**
- * latest_video: always returns text + link (no images/iframes)
- * Uses local cached API to avoid worker timeouts.
- */
 mcp.tool("latest_video", {}, async () => {
-  const r = await getVideosCached();
-  if (!r.ok) {
+  const r = await getVideosSWR();
+  const items = r.items || [];
+  if (!items.length) {
     return {
       content: [
         {
           type: "text",
-          text: `刷新失敗 (status ${r.status}): ${JSON.stringify(r.error).slice(0, 300)}`,
+          text:
+            `暫時無法取得清單（上游可能 timeout）。\n` +
+            `請開啟網站查看：${SITE_BASE_URL ? SITE_BASE_URL + "/ui/videos" : "/ui/videos"}`,
         },
       ],
     };
   }
 
-  const v = r.items[0];
-  if (!v) {
-    return { content: [{ type: "text", text: "No videos found." }] };
-  }
-
-  // 注意：把這個 domain 改成你實際部署的網站域名
-  const siteBase = process.env.SITE_BASE_URL || `http://localhost:${PORT}`;
-  const playLink = `${siteBase}/ui/videos?play=${encodeURIComponent(v.videoId)}`;
+  const v = items[0];
+  const base = SITE_BASE_URL || "";
+  const playLink = `${base}/ui/videos?play=${encodeURIComponent(v.videoId)}`;
   const yt = `https://youtu.be/${v.videoId}`;
-
-  const staleNote = r.stale ? `\n\n⚠️ 上游 timeout，暫用快取（cache age ${Math.floor((Date.now() - videosCache.ts) / 1000)}s）。` : "";
+  const staleNote = r.meta?.stale ? `\n\n⚠️ 目前顯示的是快取資料（cacheAge ${r.meta.cacheAgeSec}s），上游正在更新/可能 timeout。` : "";
 
   return {
     content: [
@@ -246,39 +252,25 @@ mcp.tool("latest_video", {}, async () => {
   };
 });
 
-mcp.tool(
-  "search_videos",
-  { q: z.string() },
-  async ({ q }) => {
-    const r = await getVideosCached();
-    if (!r.ok) {
-      return {
-        content: [{ type: "text", text: `刷新失敗 (status ${r.status}): ${JSON.stringify(r.error).slice(0, 300)}` }],
-      };
-    }
+mcp.tool("search_videos", { q: z.string() }, async ({ q }) => {
+  const r = await getVideosSWR();
+  const query = normalizeText(q);
+  const hits = (r.items || [])
+    .filter((v) => normalizeText(`${v.title} ${v.channelTitle}`).includes(query))
+    .slice(0, 20);
 
-    const query = normalizeText(q);
-    const hits = r.items
-      .filter((v) => normalizeText(`${v.title} ${v.channelTitle}`).includes(query))
-      .slice(0, 20);
-
-    const siteBase = process.env.SITE_BASE_URL || `http://localhost:${PORT}`;
-
-    const lines = hits.map((v, i) => {
-      const playLink = `${siteBase}/ui/videos?play=${encodeURIComponent(v.videoId)}`;
-      return `${i + 1}. ${v.title}\n   ▶️ ${playLink}`;
-    });
-
-    return {
-      content: [
-        {
-          type: "text",
-          text: hits.length ? lines.join("\n\n") : "沒有找到相關影片。",
-        },
-      ],
-    };
+  const base = SITE_BASE_URL || "";
+  if (!hits.length) {
+    return { content: [{ type: "text", text: "沒有找到相關影片。" }] };
   }
-);
+
+  const lines = hits.map((v, i) => {
+    const play = `${base}/ui/videos?play=${encodeURIComponent(v.videoId)}`;
+    return `${i + 1}. ${v.title}\n   ▶️ ${play}`;
+  });
+
+  return { content: [{ type: "text", text: lines.join("\n\n") }] };
+});
 
 const transport = new StreamableHTTPServerTransport({ server: mcp });
 
@@ -288,12 +280,10 @@ const server = createServer(async (req, res) => {
     const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
     const pathname = url.pathname;
 
-    // MCP endpoint
     if (pathname === "/mcp") {
       return transport.handleRequest(req, res);
     }
 
-    // UI routes
     if (pathname === "/") {
       res.statusCode = 302;
       res.setHeader("Location", "/ui/videos");
@@ -301,47 +291,33 @@ const server = createServer(async (req, res) => {
       return res.end("Redirecting…");
     }
 
-    if (pathname === "/ui/videos") {
-      return await sendFile(res, 200, "ui-videos.html");
-    }
+    if (pathname === "/ui/videos") return await sendFile(res, 200, "ui-videos.html");
+    if (pathname === "/ui/search") return await sendFile(res, 200, "ui-search.html");
 
-    if (pathname === "/ui/search") {
-      return await sendFile(res, 200, "ui-search.html");
-    }
-
-    // API: videos (cache-first)
     if (pathname === "/api/videos") {
-      const r = await getVideosCached();
-      if (!r.ok) return sendJson(res, r.status, r.error);
-
-      return sendJson(res, 200, {
-        items: r.items,
-        meta: {
-          cached: !!r.cached,
-          stale: !!r.stale,
-          cacheAgeSec: videosCache.ts ? Math.floor((Date.now() - videosCache.ts) / 1000) : null,
-          workerStatus: r.workerStatus || 200,
-        },
-      });
+      const r = await getVideosSWR();
+      // always 200
+      return sendJson(res, 200, { items: r.items, meta: r.meta });
     }
 
-    // API: search (server-side filter)
     if (pathname === "/api/search") {
       const q = url.searchParams.get("q") || "";
-      const r = await getVideosCached();
-      if (!r.ok) return sendJson(res, r.status, r.error);
-
+      const r = await getVideosSWR();
       const query = normalizeText(q);
       const filtered = !query
         ? []
-        : r.items.filter((v) => normalizeText(`${v.title} ${v.channelTitle}`).includes(query));
-
-      return sendJson(res, 200, { items: filtered.slice(0, 100), q, meta: { stale: !!r.stale } });
+        : (r.items || []).filter((v) => normalizeText(`${v.title} ${v.channelTitle}`).includes(query));
+      return sendJson(res, 200, { items: filtered.slice(0, 100), q, meta: r.meta });
     }
 
-    // Health
     if (pathname === "/health") {
-      return sendJson(res, 200, { ok: true, service: "yt-ui-mcp", time: new Date().toISOString() });
+      return sendJson(res, 200, {
+        ok: true,
+        service: "yt-ui-mcp",
+        cacheItems: videosCache.items.length,
+        cacheAgeSec: videosCache.ts ? Math.floor((Date.now() - videosCache.ts) / 1000) : null,
+        refreshing,
+      });
     }
 
     return sendText(res, 404, "Not Found");
@@ -350,6 +326,9 @@ const server = createServer(async (req, res) => {
     return sendText(res, 500, `Internal Error: ${String(err?.message || err)}`);
   }
 });
+
+// warm cache once at boot (non-blocking)
+refreshVideosInBackground();
 
 server.listen(PORT, () => {
   console.log(`Server listening on http://localhost:${PORT}`);
