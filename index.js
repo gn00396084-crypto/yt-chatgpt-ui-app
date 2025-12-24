@@ -200,7 +200,7 @@ async function getVideosSWR() {
 }
 
 /* ---------------- MCP server factory (PER REQUEST) ----------------
-   官方 quickstart 建議：每次 /mcp request 建新的 server + transport，並 connect 後 handleRequest。 
+   官方 quickstart 建議：每次 /mcp request 建新的 server + transport，並 connect 後 handleRequest。 :contentReference[oaicite:4]{index=4}
 */
 function createMcp() {
   const mcp = new McpServer({ name: "yt-ui-mcp", version: "1.0.0" });
@@ -239,4 +239,135 @@ function createMcp() {
           type: "text",
           text:
             `🎵 最新一首（最近成功抓取）\n\n` +
-            `${v
+            `${v.title}\n` +
+            `上架：${(v.publishedAt || "").slice(0, 10) || "unknown"}\n\n` +
+            `▶️ 本站播放（含縮圖）：\n${playLink}\n\n` +
+            `YouTube：\n${yt}` +
+            staleNote,
+        },
+      ],
+    };
+  });
+
+  mcp.tool("search_videos", { q: z.string() }, async ({ q }) => {
+    const { items, meta } = await getVideosSWR();
+    const query = normalizeText(q);
+
+    const hits = (items || [])
+      .filter((v) => normalizeText(`${v.title} ${v.channelTitle}`).includes(query))
+      .slice(0, 20);
+
+    if (!hits.length) {
+      return { content: [{ type: "text", text: `沒有找到相關影片。${meta?.stale ? "（上游可能 timeout，結果來自快取）" : ""}` }] };
+    }
+
+    const lines = hits.map((v, i) => {
+      const link = SITE_BASE_URL
+        ? `${SITE_BASE_URL}/ui/videos?play=${encodeURIComponent(v.videoId)}`
+        : `/ui/videos?play=${encodeURIComponent(v.videoId)}`;
+      return `${i + 1}. ${v.title}\n   ▶️ ${link}`;
+    });
+
+    return { content: [{ type: "text", text: lines.join("\n\n") }] };
+  });
+
+  return mcp;
+}
+
+/* ---------------- HTTP server ---------------- */
+const MCP_PATH = "/mcp";
+const MCP_METHODS = new Set(["POST", "GET", "DELETE"]);
+
+const server = createServer(async (req, res) => {
+  try {
+    const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
+    const pathname = url.pathname;
+
+    // Basic health
+    if (req.method === "GET" && pathname === "/") {
+      res.writeHead(200, { "content-type": "text/plain; charset=utf-8" }).end("OK");
+      return;
+    }
+
+    // CORS preflight for MCP (recommended by official quickstart) :contentReference[oaicite:5]{index=5}
+    if (req.method === "OPTIONS" && pathname.startsWith(MCP_PATH)) {
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      res.setHeader("Access-Control-Allow-Methods", "GET,POST,DELETE,OPTIONS");
+      res.setHeader("Access-Control-Allow-Headers", "content-type,authorization");
+      res.setHeader("Access-Control-Expose-Headers", "Mcp-Session-Id");
+      res.writeHead(204).end();
+      return;
+    }
+
+    // MCP endpoint (Streamable HTTP)
+    if (pathname.startsWith(MCP_PATH) && req.method && MCP_METHODS.has(req.method)) {
+      // Per official example: set these headers for connector wizard robustness :contentReference[oaicite:6]{index=6}
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      res.setHeader("Access-Control-Expose-Headers", "Mcp-Session-Id");
+
+      const mcp = createMcp();
+      const transport = new StreamableHTTPServerTransport({
+        sessionIdGenerator: undefined, // stateless mode
+        enableJsonResponse: true,
+      });
+
+      res.on("close", () => {
+        transport.close();
+        mcp.close();
+      });
+
+      try {
+        await mcp.connect(transport);
+        await transport.handleRequest(req, res);
+      } catch (err) {
+        console.error("Error handling MCP request:", err);
+        if (!res.headersSent) res.writeHead(500).end("Internal server error");
+      }
+      return;
+    }
+
+    // UI routes
+    if (pathname === "/ui/videos") return await sendFile(res, 200, "ui-videos.html");
+    if (pathname === "/ui/search") return await sendFile(res, 200, "ui-search.html");
+
+    // API routes (never throw timeout to UI; always 200 payload)
+    if (pathname === "/api/videos") {
+      const r = await getVideosSWR();
+      return sendJson(res, 200, { items: r.items, meta: r.meta });
+    }
+
+    if (pathname === "/api/search") {
+      const q = url.searchParams.get("q") || "";
+      const { items, meta } = await getVideosSWR();
+      const query = normalizeText(q);
+
+      const filtered = !query
+        ? []
+        : (items || []).filter((v) => normalizeText(`${v.title} ${v.channelTitle}`).includes(query));
+
+      return sendJson(res, 200, { items: filtered.slice(0, 100), q, meta });
+    }
+
+    if (pathname === "/health") {
+      return sendJson(res, 200, {
+        ok: true,
+        cacheItems: videosCache.items.length,
+        cacheAgeSec: videosCache.ts ? Math.floor((Date.now() - videosCache.ts) / 1000) : null,
+        refreshing,
+      });
+    }
+
+    return sendText(res, 404, "Not Found");
+  } catch (err) {
+    console.error(err);
+    return sendText(res, 500, `Internal Error: ${String(err?.message || err)}`);
+  }
+});
+
+// Warm cache once at boot (non-blocking)
+refreshVideosInBackground();
+
+server.listen(PORT, () => {
+  console.log(`Server listening on http://localhost:${PORT}`);
+  console.log(`MCP endpoint: /mcp`);
+});
