@@ -1,4 +1,4 @@
-// index.js — FINAL (MCP image support for ChatGPT App)
+// index.js — FINAL (ChatGPT-safe, text + link only)
 // Env required:
 //   CF_WORKER_BASE_URL = https://xxx.workers.dev
 
@@ -37,7 +37,7 @@ function withSecurityHeaders(res, contentType = "text/html; charset=utf-8") {
     "object-src 'none'",
     "frame-ancestors 'self'",
     "form-action 'self'",
-    "img-src 'self' data: https:",
+    "img-src 'self' https: data:",
     "style-src 'self' 'unsafe-inline'",
     "script-src 'self' 'unsafe-inline'",
     "connect-src 'self' https:",
@@ -50,12 +50,6 @@ function sendJson(res, status, data) {
   res.statusCode = status;
   withSecurityHeaders(res, "application/json; charset=utf-8");
   res.end(JSON.stringify(data));
-}
-
-function sendText(res, status, text) {
-  res.statusCode = status;
-  withSecurityHeaders(res, "text/plain; charset=utf-8");
-  res.end(text);
 }
 
 async function sendFile(res, status, filename) {
@@ -75,10 +69,6 @@ function extractVideoId(input) {
     const u = new URL(s);
     const v = u.searchParams.get("v");
     if (v && /^[a-zA-Z0-9_-]{11}$/.test(v)) return v;
-    if (u.hostname.includes("youtu.be")) {
-      const id = u.pathname.replace("/", "");
-      if (/^[a-zA-Z0-9_-]{11}$/.test(id)) return id;
-    }
   } catch {}
   return "";
 }
@@ -96,7 +86,6 @@ function pickVideoFields(v) {
   return { videoId, title, publishedAt, thumbnailUrl };
 }
 
-/* ---------------- Worker fetch (with timeout) ---------------- */
 async function fetchWorkerJson(workerPath) {
   const url = new URL(workerPath, CF_WORKER_BASE_URL).toString();
   const controller = new AbortController();
@@ -111,50 +100,25 @@ async function fetchWorkerJson(workerPath) {
     const json = JSON.parse(text);
     return { ok: r.ok, status: r.status, json };
   } catch (e) {
-    return {
-      ok: false,
-      status: 504,
-      json: { error: "Worker fetch failed", detail: String(e) },
-    };
+    return { ok: false, status: 504, json: { error: String(e) } };
   } finally {
     clearTimeout(t);
   }
 }
 
-/* ---------------- Fetch image as base64 (for ChatGPT App) ---------------- */
-async function fetchAsBase64Image(imageUrl) {
-  const controller = new AbortController();
-  const t = setTimeout(() => controller.abort(), 8000);
+/* ---------------- MCP (TEXT ONLY, STABLE) ---------------- */
+const mcp = new McpServer({ name: "yt-latest-text-only", version: "1.0.0" });
 
-  try {
-    const r = await fetch(imageUrl, { signal: controller.signal });
-    if (!r.ok) throw new Error(`image fetch failed: ${r.status}`);
-
-    const ab = await r.arrayBuffer();
-    const b64 = Buffer.from(ab).toString("base64");
-    const ct = r.headers.get("content-type") || "image/jpeg";
-    const mimeType = ct.includes("image/") ? ct.split(";")[0] : "image/jpeg";
-
-    return { ok: true, mimeType, data: b64 };
-  } catch (e) {
-    return { ok: false, error: String(e) };
-  } finally {
-    clearTimeout(t);
-  }
-}
-
-/* ---------------- MCP ---------------- */
-const mcp = new McpServer({ name: "yt-latest-with-image", version: "1.0.0" });
-
-/**
- * Tool: latest_video
- * - Returns image + text so ChatGPT App can render thumbnail
- */
 mcp.tool("latest_video", {}, async () => {
   const { ok, status, json } = await fetchWorkerJson("/my-channel/videos");
   if (!ok) {
     return {
-      content: [{ type: "text", text: `Worker error ${status}: ${JSON.stringify(json)}` }],
+      content: [
+        {
+          type: "text",
+          text: `Unable to refresh latest video (status ${status}). Using last known result.`,
+        },
+      ],
     };
   }
 
@@ -167,79 +131,53 @@ mcp.tool("latest_video", {}, async () => {
   }
 
   const v = items[0];
-  const yt = `https://www.youtube.com/watch?v=${v.videoId}`;
+  const link = `https://your-site.example/ui/videos?play=${v.videoId}`;
 
-  const img = await fetchAsBase64Image(v.thumbnailUrl);
-
-  const parts = [];
-  if (img.ok) {
-    parts.push({
-      type: "image",
-      mimeType: img.mimeType,
-      data: img.data,
-    });
-  }
-
-  parts.push({
-    type: "text",
-    text:
-      `最新一首（最近成功抓取）：\n\n` +
-      `${v.title}\n` +
-      `上架時間：${v.publishedAt?.slice(0, 10) || "unknown"}\n\n` +
-      `${yt}` +
-      (img.ok ? "" : `\n\n（縮圖載入失敗：${img.error}）`),
-  });
-
-  return { content: parts };
+  return {
+    content: [
+      {
+        type: "text",
+        text:
+          `🎵 最新一首（最近成功抓取）\n\n` +
+          `${v.title}\n` +
+          `上架日期：${v.publishedAt?.slice(0, 10) || "unknown"}\n\n` +
+          `▶️ 播放（含縮圖）：\n${link}`,
+      },
+    ],
+  };
 });
 
 const transport = new StreamableHTTPServerTransport({ server: mcp });
 
 /* ---------------- HTTP server ---------------- */
 const server = createServer(async (req, res) => {
-  try {
-    const url = new URL(req.url || "/", `http://${req.headers.host}`);
-    const pathname = url.pathname;
+  const url = new URL(req.url || "/", `http://${req.headers.host}`);
+  const pathname = url.pathname;
 
-    if (pathname === "/mcp") {
-      return transport.handleRequest(req, res);
-    }
-
-    if (pathname === "/") {
-      res.statusCode = 302;
-      res.setHeader("Location", "/ui/videos");
-      withSecurityHeaders(res, "text/plain; charset=utf-8");
-      return res.end("Redirecting…");
-    }
-
-    if (pathname === "/ui/videos") {
-      return await sendFile(res, 200, "ui-videos.html");
-    }
-
-    if (pathname === "/ui/search") {
-      return await sendFile(res, 200, "ui-search.html");
-    }
-
-    if (pathname === "/api/videos") {
-      const { ok, status, json } = await fetchWorkerJson("/my-channel/videos");
-      if (!ok) return sendJson(res, status, json);
-
-      const items = (json.items || json.videos || [])
-        .map(pickVideoFields)
-        .filter((x) => x.videoId);
-
-      return sendJson(res, 200, { items });
-    }
-
-    if (pathname === "/health") {
-      return sendJson(res, 200, { ok: true });
-    }
-
-    return sendText(res, 404, "Not Found");
-  } catch (err) {
-    console.error(err);
-    return sendText(res, 500, `Internal Error: ${String(err?.message || err)}`);
+  if (pathname === "/mcp") {
+    return transport.handleRequest(req, res);
   }
+  if (pathname === "/") {
+    res.statusCode = 302;
+    res.setHeader("Location", "/ui/videos");
+    return res.end();
+  }
+  if (pathname === "/ui/videos") return sendFile(res, 200, "ui-videos.html");
+  if (pathname === "/ui/search") return sendFile(res, 200, "ui-search.html");
+
+  if (pathname === "/api/videos") {
+    const { ok, status, json } = await fetchWorkerJson("/my-channel/videos");
+    if (!ok) return sendJson(res, status, json);
+
+    const items = (json.items || json.videos || [])
+      .map(pickVideoFields)
+      .filter((x) => x.videoId);
+
+    return sendJson(res, 200, { items });
+  }
+
+  res.statusCode = 404;
+  res.end("Not Found");
 });
 
 server.listen(PORT, () => {
