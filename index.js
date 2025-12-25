@@ -74,6 +74,37 @@ function normalizeText(s) {
   return String(s || "").toLowerCase().trim();
 }
 
+// Escape minimal set so Markdown link text won't break
+function mdEscape(s) {
+  return String(s || "").replace(/[[\]()]/g, "\\$&");
+}
+
+// Fetch an image and embed as base64 so ChatGPT can render thumbnail reliably
+async function fetchImageAsBase64(imageUrl, timeoutMs = 2500, maxBytes = 180_000) {
+  if (!imageUrl) return null;
+
+  const controller = new AbortController();
+  const t = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const r = await fetch(imageUrl, { signal: controller.signal });
+    if (!r.ok) return null;
+
+    const len = Number(r.headers.get("content-length") || 0);
+    if (len && len > maxBytes) return null;
+
+    const buf = Buffer.from(await r.arrayBuffer());
+    if (buf.length > maxBytes) return null;
+
+    const mimeType = (r.headers.get("content-type") || "image/jpeg").split(";")[0];
+    return { mimeType, data: buf.toString("base64") };
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(t);
+  }
+}
+
 function extractVideoId(input) {
   if (!input) return "";
   const s = String(input).trim();
@@ -205,9 +236,10 @@ async function getVideosSWR() {
 function createMcp() {
   const mcp = new McpServer({ name: "yt-ui-mcp", version: "1.0.0" });
 
-  // Text-only: stable in ChatGPT App
+  // ✅ Latest video: returns thumbnail (image/base64) + clickable title
   mcp.tool("latest_video", {}, async () => {
     const { items, meta } = await getVideosSWR();
+
     if (!items.length) {
       const link = SITE_BASE_URL ? `${SITE_BASE_URL}/ui/videos` : "/ui/videos";
       return {
@@ -224,31 +256,44 @@ function createMcp() {
     }
 
     const v = items[0];
+    const yt = `https://youtu.be/${v.videoId}`;
+
     const playLink = SITE_BASE_URL
       ? `${SITE_BASE_URL}/ui/videos?play=${encodeURIComponent(v.videoId)}`
       : `/ui/videos?play=${encodeURIComponent(v.videoId)}`;
-    const yt = `https://youtu.be/${v.videoId}`;
+
+    // Prefer smaller thumbnail to keep base64 small & fast
+    const thumbUrl =
+      v.thumbnailUrl ||
+      (v.videoId ? `https://i.ytimg.com/vi/${v.videoId}/mqdefault.jpg` : "");
+
+    const img = await fetchImageAsBase64(thumbUrl);
 
     const staleNote = meta?.stale
       ? `\n\n⚠️ 目前顯示快取（cacheAge ${meta.cacheAgeSec}s），上游正在更新/可能 timeout。`
       : "";
 
+    const title = mdEscape(v.title);
+    const published = (v.publishedAt || "").slice(0, 10) || "unknown";
+
+    // Markdown link (best), plus plain URL (fallback if markdown not rendered in tool view)
+    const text =
+      `🎵 **新歌（目前最新一首）**：\n\n` +
+      `[${title}](${yt})\n` +
+      `${yt}\n\n` +
+      `上架：${published}\n\n` +
+      `▶️ 本站播放（含縮圖）：\n${playLink}` +
+      staleNote;
+
     return {
       content: [
-        {
-          type: "text",
-          text:
-            `🎵 最新一首（最近成功抓取）\n\n` +
-            `${v.title}\n` +
-            `上架：${(v.publishedAt || "").slice(0, 10) || "unknown"}\n\n` +
-            `▶️ 本站播放（含縮圖）：\n${playLink}\n\n` +
-            `YouTube：\n${yt}` +
-            staleNote,
-        },
+        ...(img ? [{ type: "image", mimeType: img.mimeType, data: img.data }] : []),
+        { type: "text", text },
       ],
     };
   });
 
+  // ✅ Search: clickable titles (YouTube) + optional site play link
   mcp.tool("search_videos", { q: z.string() }, async ({ q }) => {
     const { items, meta } = await getVideosSWR();
     const query = normalizeText(q);
@@ -258,14 +303,26 @@ function createMcp() {
       .slice(0, 20);
 
     if (!hits.length) {
-      return { content: [{ type: "text", text: `沒有找到相關影片。${meta?.stale ? "（上游可能 timeout，結果來自快取）" : ""}` }] };
+      return {
+        content: [
+          { type: "text", text: `沒有找到相關影片。${meta?.stale ? "（上游可能 timeout，結果來自快取）" : ""}` },
+        ],
+      };
     }
 
     const lines = hits.map((v, i) => {
-      const link = SITE_BASE_URL
+      const yt = `https://youtu.be/${v.videoId}`;
+      const title = mdEscape(v.title);
+      const date = (v.publishedAt || "").slice(0, 10) || "";
+
+      const playLink = SITE_BASE_URL
         ? `${SITE_BASE_URL}/ui/videos?play=${encodeURIComponent(v.videoId)}`
         : `/ui/videos?play=${encodeURIComponent(v.videoId)}`;
-      return `${i + 1}. ${v.title}\n   ▶️ ${link}`;
+
+      return (
+        `${i + 1}. [${title}](${yt})${date ? `（${date}）` : ""}\n` +
+        `   ▶️ 本站播放：${playLink}`
+      );
     });
 
     return { content: [{ type: "text", text: lines.join("\n\n") }] };
