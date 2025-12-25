@@ -2,10 +2,44 @@
 <html lang="zh-Hant">
 <head>
   <meta charset="utf-8" />
-  <title>搜尋影片</title>
+  <title>找一首歌｜故事說音樂</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body {
+      font-family: system-ui;
+      background: #fff;
+      color: #111;
+      padding: 32px;
+    }
+    input {
+      width: 100%;
+      padding: 14px;
+      font-size: 16px;
+      margin-top: 16px;
+    }
+    button {
+      margin-top: 16px;
+      padding: 10px 16px;
+      font-size: 15px;
+    }
+  </style>
 </head>
 <body>
-  <h1>🔎 搜尋</h1>
-  <p>搜尋結果會導流到影片播放頁。</p>
+
+<h2>不是每一次，都要找一首歌。</h2>
+<p>有時，只是想被陪一會。</p>
+
+<input id="q" placeholder="輸入一首你想被理解的歌…" />
+
+<button onclick="go()">打開故事</button>
+
+<script>
+function go() {
+  const q = document.getElementById("q").value.trim();
+  if (!q) return;
+  location.href = "/ui-videos.html?title=" + encodeURIComponent(q);
+}
+</script>
+
 </body>
 </html>
