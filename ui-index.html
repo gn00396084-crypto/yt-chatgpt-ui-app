@@ -1,98 +1,45 @@
 <!doctype html>
-<html lang="zh-HK">
+<html lang="zh-Hant">
 <head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width,initial-scale=1"/>
-
-  <!-- CSP：單行，避免 validator 誤判 -->
-  <meta http-equiv="Content-Security-Policy"
-        content="default-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'; object-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:;">
-
-  <!-- ✅ 必須：與 mcp.resources.js 的 widgetType 完全一致（唯一、無冒號） -->
-  <meta name="app:type" content="io.github.gn00396084-crypto.ytfinder.home"/>
-
-  <title>YouTube Finder</title>
-
+  <meta charset="utf-8" />
+  <title>故事說音樂</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
-    :root{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
-    body{margin:0;padding:14px;background:#fff}
-    .card{border:1px solid rgba(0,0,0,.12);border-radius:14px;padding:14px;max-width:900px;margin:0 auto}
-    .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-    button{padding:10px 12px;border-radius:12px;border:1px solid rgba(0,0,0,.18);background:#fff;cursor:pointer}
-    button.primary{border-color:rgba(0,0,0,.3)}
-    small{opacity:.7}
-    .muted{opacity:.7}
-    .sp{height:10px}
-    .pill{display:inline-block;border:1px solid rgba(0,0,0,.12);border-radius:999px;padding:6px 10px;font-size:12px}
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont;
+      background: #f7f7fb;
+      color: #111;
+      padding: 32px;
+      line-height: 1.6;
+    }
+    a {
+      color: #111;
+      text-decoration: none;
+      border-bottom: 1px solid #111;
+    }
+    ul { padding-left: 20px; }
   </style>
 </head>
+<body>
 
-<body data-widget-type="io.github.gn00396084-crypto.ytfinder.home">
-  <div class="card">
-    <h2 style="margin:0 0 6px">YouTube Finder</h2>
-    <div class="muted">選擇功能頁面</div>
+<h1>故事說音樂</h1>
 
-    <div class="sp"></div>
+<p>
+有些歌，不是用來聽的。<br />
+是用來陪你走過一段時間。
+</p>
 
-    <div class="row">
-      <button id="goLatest" class="primary">📺 最新影片（List）</button>
-      <button id="goSearch">🔎 搜尋影片（Search）</button>
-    </div>
+<p>你現在比較接近哪一種狀態？</p>
 
-    <div class="sp"></div>
+<ul>
+  <li>還沒放下</li>
+  <li>已經不再聯絡</li>
+  <li>只是想靜一會</li>
+</ul>
 
-    <div class="row">
-      <span class="pill">Tips：Search 會先抓 500 條索引再本地過濾</span>
-      <span class="pill">若無結果，先試 /debug/worker</span>
-    </div>
+<p>
+👉 <a href="/ui-search.html">開始找一首歌</a>
+</p>
 
-    <div class="sp"></div>
-    <small id="status">等待操作…</small>
-  </div>
-
-  <!-- ✅ 必須：module script，且只保留一個入口 -->
-  <script type="module">
-    // ✅ 與 meta / body / mcp.resources.js 完全一致
-    const WIDGET_TYPE = "io.github.gn00396084-crypto.ytfinder.home";
-
-    function setStatus(msg){
-      document.getElementById("status").textContent = msg;
-    }
-
-    async function callTool(name, args){
-      if (!window.openai?.callTool) {
-        throw new Error("openai bridge not available");
-      }
-      return window.openai.callTool(name, args);
-    }
-
-    document.getElementById("goLatest").addEventListener("click", async () => {
-      try {
-        setStatus("載入最新影片…");
-        await callTool("list_videos", { limit: 30 });
-        setStatus("已發送請求。");
-      } catch (e) {
-        setStatus("錯誤：" + (e?.message || String(e)));
-      }
-    });
-
-    document.getElementById("goSearch").addEventListener("click", async () => {
-      try {
-        setStatus("開啟搜尋頁…");
-        await callTool("open_search_page", {});
-        setStatus("已發送請求。");
-      } catch (e) {
-        setStatus("錯誤：" + (e?.message || String(e)));
-      }
-    });
-
-    (function(){
-      if (window.openai?.toolOutput) {
-        setStatus("已收到工具輸出。");
-      }
-      // Debug 用
-      window.__WIDGET_TYPE__ = WIDGET_TYPE;
-    })();
-  </script>
 </body>
 </html>
