@@ -74,37 +74,6 @@ function normalizeText(s) {
   return String(s || "").toLowerCase().trim();
 }
 
-// Escape minimal set so Markdown link text won't break
-function mdEscape(s) {
-  return String(s || "").replace(/[[\]()]/g, "\\$&");
-}
-
-// Fetch an image and embed as base64 so ChatGPT can render thumbnail reliably
-async function fetchImageAsBase64(imageUrl, timeoutMs = 2500, maxBytes = 180_000) {
-  if (!imageUrl) return null;
-
-  const controller = new AbortController();
-  const t = setTimeout(() => controller.abort(), timeoutMs);
-
-  try {
-    const r = await fetch(imageUrl, { signal: controller.signal });
-    if (!r.ok) return null;
-
-    const len = Number(r.headers.get("content-length") || 0);
-    if (len && len > maxBytes) return null;
-
-    const buf = Buffer.from(await r.arrayBuffer());
-    if (buf.length > maxBytes) return null;
-
-    const mimeType = (r.headers.get("content-type") || "image/jpeg").split(";")[0];
-    return { mimeType, data: buf.toString("base64") };
-  } catch {
-    return null;
-  } finally {
-    clearTimeout(t);
-  }
-}
-
 function extractVideoId(input) {
   if (!input) return "";
   const s = String(input).trim();
@@ -147,6 +116,47 @@ function pickVideoFields(v) {
     (videoId ? `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg` : "");
 
   return { videoId, title, channelTitle, publishedAt, thumbnailUrl };
+}
+
+function absUrl(p) {
+  if (!p) return p;
+  const s = String(p);
+  if (/^https?:\/\//i.test(s)) return s;
+  if (SITE_BASE_URL && s.startsWith("/")) return `${SITE_BASE_URL}${s}`;
+  return s;
+}
+
+/* ---------------- Fetch thumbnail as base64 (for MCP image content) ---------------- */
+async function fetchImageBase64(url, { timeoutMs = 2500, maxBytes = 220_000 } = {}) {
+  if (!url) return null;
+
+  const controller = new AbortController();
+  const t = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const r = await fetch(url, {
+      signal: controller.signal,
+      headers: {
+        // ytimg usually returns jpeg; keep headers simple
+        Accept: "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+        "User-Agent": "Mozilla/5.0",
+      },
+    });
+    if (!r.ok) return null;
+
+    const len = Number(r.headers.get("content-length") || "0");
+    if (len && len > maxBytes) return null;
+
+    const ab = await r.arrayBuffer();
+    if (ab.byteLength > maxBytes) return null;
+
+    const b64 = Buffer.from(ab).toString("base64");
+    return b64;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(t);
+  }
 }
 
 /* ---------------- Worker fetch (short timeout) ---------------- */
@@ -216,8 +226,8 @@ async function getVideosSWR() {
     };
   }
 
-  // first time: try worker once, short timeout
-  const { ok, status, json } = await fetchWorkerJson("/my-channel/videos", 3000);
+  // first time: give a bit longer (reduce "no result" on cold start)
+  const { ok, status, json } = await fetchWorkerJson("/my-channel/videos", 6000);
   if (ok) {
     const items = (json.items || json.videos || [])
       .map(pickVideoFields)
@@ -231,69 +241,68 @@ async function getVideosSWR() {
 }
 
 /* ---------------- MCP server factory (PER REQUEST) ----------------
-   官方 quickstart 建議：每次 /mcp request 建新的 server + transport，並 connect 後 handleRequest。 :contentReference[oaicite:4]{index=4}
+   官方 quickstart 建議：每次 /mcp request 建新的 server + transport，並 connect 後 handleRequest。
 */
 function createMcp() {
   const mcp = new McpServer({ name: "yt-ui-mcp", version: "1.0.0" });
 
-  // ✅ Latest video: returns thumbnail (image/base64) + clickable title
+  // ✅ latest_video: return embedded thumbnail (image) + clickable URLs (bare URLs)
   mcp.tool("latest_video", {}, async () => {
     const { items, meta } = await getVideosSWR();
 
     if (!items.length) {
-      const link = SITE_BASE_URL ? `${SITE_BASE_URL}/ui/videos` : "/ui/videos";
+      const link = absUrl("/ui/videos");
       return {
         content: [
           {
             type: "text",
             text:
-              `暫時無法取得清單（上游可能 timeout）。\n` +
-              `請開啟網站查看：\n${link}\n\n` +
-              `（meta: ${JSON.stringify(meta).slice(0, 400)}）`,
+              `暫時無法取得影片清單（上游可能 timeout / 冷啟動）。\n\n` +
+              `你可以先打開（有縮圖）：\n${link}\n\n` +
+              `meta: ${JSON.stringify(meta).slice(0, 400)}`,
           },
         ],
       };
     }
 
     const v = items[0];
+    const playLink = absUrl(`/ui/videos?play=${encodeURIComponent(v.videoId)}`);
     const yt = `https://youtu.be/${v.videoId}`;
-
-    const playLink = SITE_BASE_URL
-      ? `${SITE_BASE_URL}/ui/videos?play=${encodeURIComponent(v.videoId)}`
-      : `/ui/videos?play=${encodeURIComponent(v.videoId)}`;
-
-    // Prefer smaller thumbnail to keep base64 small & fast
-    const thumbUrl =
-      v.thumbnailUrl ||
-      (v.videoId ? `https://i.ytimg.com/vi/${v.videoId}/mqdefault.jpg` : "");
-
-    const img = await fetchImageAsBase64(thumbUrl);
+    const thumbUrl = v.thumbnailUrl || `https://i.ytimg.com/vi/${v.videoId}/mqdefault.jpg`;
 
     const staleNote = meta?.stale
       ? `\n\n⚠️ 目前顯示快取（cacheAge ${meta.cacheAgeSec}s），上游正在更新/可能 timeout。`
       : "";
 
-    const title = mdEscape(v.title);
-    const published = (v.publishedAt || "").slice(0, 10) || "unknown";
+    // Try embed thumbnail
+    const b64 = await fetchImageBase64(thumbUrl, { timeoutMs: 2200, maxBytes: 220_000 });
+    const content = [];
 
-    // Markdown link (best), plus plain URL (fallback if markdown not rendered in tool view)
-    const text =
-      `🎵 **新歌（目前最新一首）**：\n\n` +
-      `[${title}](${yt})\n` +
-      `${yt}\n\n` +
-      `上架：${published}\n\n` +
-      `▶️ 本站播放（含縮圖）：\n${playLink}` +
-      staleNote;
+    if (b64) {
+      content.push({
+        type: "image",
+        mimeType: "image/jpeg",
+        data: b64,
+      });
+    }
 
-    return {
-      content: [
-        ...(img ? [{ type: "image", mimeType: img.mimeType, data: img.data }] : []),
-        { type: "text", text },
-      ],
-    };
+    // Bare URLs => clickable in ChatGPT
+    content.push({
+      type: "text",
+      text:
+        `🎵 最新一首（目前抓到）\n\n` +
+        `標題：${v.title}\n` +
+        `上架：${(v.publishedAt || "").slice(0, 10) || "unknown"}\n\n` +
+        `YouTube：\n${yt}\n\n` +
+        `本站播放（16:9 縮圖 + 故事卡片頁）：\n${playLink}\n\n` +
+        `縮圖連結（如未能內嵌，可直接點開）：\n${thumbUrl}` +
+        staleNote,
+    });
+
+    return { content };
   });
 
-  // ✅ Search: clickable titles (YouTube) + optional site play link
+  // ✅ search_videos: list results with clickable bare URLs + embed top 2 thumbnails
   mcp.tool("search_videos", { q: z.string() }, async ({ q }) => {
     const { items, meta } = await getVideosSWR();
     const query = normalizeText(q);
@@ -305,27 +314,45 @@ function createMcp() {
     if (!hits.length) {
       return {
         content: [
-          { type: "text", text: `沒有找到相關影片。${meta?.stale ? "（上游可能 timeout，結果來自快取）" : ""}` },
+          {
+            type: "text",
+            text: `沒有找到相關影片：${q}\n${meta?.stale ? "（提示：上游可能 timeout，結果來自快取/或暫時為空）" : ""}`,
+          },
         ],
       };
     }
 
+    // Embed up to 2 thumbs (avoid huge responses)
+    const content = [];
+    for (let i = 0; i < Math.min(2, hits.length); i++) {
+      const v = hits[i];
+      const thumbUrl = v.thumbnailUrl || `https://i.ytimg.com/vi/${v.videoId}/mqdefault.jpg`;
+      const b64 = await fetchImageBase64(thumbUrl, { timeoutMs: 2200, maxBytes: 220_000 });
+      if (b64) {
+        content.push({ type: "image", mimeType: "image/jpeg", data: b64 });
+      }
+    }
+
     const lines = hits.map((v, i) => {
       const yt = `https://youtu.be/${v.videoId}`;
-      const title = mdEscape(v.title);
-      const date = (v.publishedAt || "").slice(0, 10) || "";
+      const playLink = absUrl(`/ui/videos?play=${encodeURIComponent(v.videoId)}`);
+      const thumbUrl = v.thumbnailUrl || `https://i.ytimg.com/vi/${v.videoId}/mqdefault.jpg`;
 
-      const playLink = SITE_BASE_URL
-        ? `${SITE_BASE_URL}/ui/videos?play=${encodeURIComponent(v.videoId)}`
-        : `/ui/videos?play=${encodeURIComponent(v.videoId)}`;
-
+      // Bare URLs => clickable
       return (
-        `${i + 1}. [${title}](${yt})${date ? `（${date}）` : ""}\n` +
-        `   ▶️ 本站播放：${playLink}`
+        `${i + 1}. ${v.title}\n` +
+        `YouTube：${yt}\n` +
+        `本站播放：${playLink}\n` +
+        `縮圖：${thumbUrl}`
       );
     });
 
-    return { content: [{ type: "text", text: lines.join("\n\n") }] };
+    content.push({
+      type: "text",
+      text: `🔎 搜尋：${q}\n\n` + lines.join("\n\n"),
+    });
+
+    return { content };
   });
 
   return mcp;
@@ -346,7 +373,7 @@ const server = createServer(async (req, res) => {
       return;
     }
 
-    // CORS preflight for MCP (recommended by official quickstart) :contentReference[oaicite:5]{index=5}
+    // CORS preflight for MCP
     if (req.method === "OPTIONS" && pathname.startsWith(MCP_PATH)) {
       res.setHeader("Access-Control-Allow-Origin", "*");
       res.setHeader("Access-Control-Allow-Methods", "GET,POST,DELETE,OPTIONS");
@@ -358,7 +385,6 @@ const server = createServer(async (req, res) => {
 
     // MCP endpoint (Streamable HTTP)
     if (pathname.startsWith(MCP_PATH) && req.method && MCP_METHODS.has(req.method)) {
-      // Per official example: set these headers for connector wizard robustness :contentReference[oaicite:6]{index=6}
       res.setHeader("Access-Control-Allow-Origin", "*");
       res.setHeader("Access-Control-Expose-Headers", "Mcp-Session-Id");
 
