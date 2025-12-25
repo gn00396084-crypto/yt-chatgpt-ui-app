@@ -5,64 +5,82 @@
   <title>這首歌的故事｜故事說音樂</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
-    body {
-      font-family: system-ui;
-      background: #fafafa;
-      color: #111;
-      padding: 24px;
-      line-height: 1.7;
+    body { font-family: system-ui; background:#fafafa; color:#111; padding:24px; line-height:1.75; }
+    .cover {
+      width:100%; aspect-ratio:16/9; border-radius:14px;
+      object-fit:cover; background:#eee; margin-bottom:14px;
     }
-    img {
-      width: 100%;
-      aspect-ratio: 16 / 9;
-      object-fit: cover;
-      border-radius: 8px;
-      margin-bottom: 16px;
+    .divider { margin: 20px 0; border-top: 1px solid #e2e2e2; }
+    .h { font-weight:800; margin: 0 0 6px; }
+    .sub { color:#444; margin:0 0 12px; }
+    .btns { display:flex; gap:10px; flex-wrap:wrap; margin: 12px 0 4px; }
+    .btn {
+      display:inline-block; padding:10px 12px; border-radius:12px;
+      border:1px solid #ddd; background:#fff; color:#111; text-decoration:none;
+      font-size:14px;
     }
-    .divider {
-      margin: 24px 0;
-      border-top: 1px solid #ddd;
-    }
-    .chapter {
-      margin-bottom: 12px;
-    }
+    ul { padding-left: 20px; }
+    .chapter { margin: 8px 0; }
   </style>
 </head>
 <body>
 
-<img src="https://images.unsplash.com/photo-1492724441997-5dc865305da7?q=80&w=1600" alt="story cover" />
+<img id="cover" class="cover" alt="cover" />
 
 <div class="divider"></div>
 
-<h2>這首歌的故事</h2>
+<h2 class="h" id="heading">這首歌的故事</h2>
+<p class="sub" id="meta"></p>
 
-<p>
-這不是不愛。<br />
-是愛到不敢靠近。
+<div class="btns">
+  <a id="ytLink" class="btn" target="_blank" rel="noreferrer">在 YouTube 打開</a>
+  <a class="btn" href="/ui-search.html">換一首歌</a>
+</div>
+
+<div class="divider"></div>
+
+<p id="abstract">
+  這不是不愛。<br />
+  是愛到不敢靠近。
 </p>
 
-<h3>💔 這首歌適合的人</h3>
+<h3 class="h">💔 這首歌適合的人</h3>
 <ul>
   <li>已經沒有聯絡</li>
   <li>但還沒真的放下</li>
 </ul>
 
-<h3>🎞 故事章節</h3>
-
+<h3 class="h">🎞 故事章節</h3>
 <div class="chapter">00:16｜書架自動分區</div>
 <div class="chapter">00:32｜筷子像鐵軌</div>
 <div class="chapter">01:05｜門檻前的沉默</div>
 
-<div class="divider"></div>
+<script>
+  const p = new URLSearchParams(location.search);
+  const title = p.get("title") || "（未命名）";
+  const artist = p.get("artist") || "";
+  const mood = p.get("mood") || "";
+  const yt = p.get("yt") || "";
 
-<p>
-你想繼續這首歌，<br />
-還是換另一個故事？
-</p>
+  const meta = [title, artist].filter(Boolean).join(" — ");
+  document.getElementById("meta").textContent = mood ? `${meta}｜${mood}` : meta;
 
-<p>
-👉 <a href="/ui-search.html">換一首歌</a>
-</p>
+  function ytThumb(id){ return `https://i.ytimg.com/vi/${encodeURIComponent(id)}/hqdefault.jpg`; }
+  function ytUrl(id){ return `https://www.youtube.com/watch?v=${encodeURIComponent(id)}`; }
+
+  const cover = document.getElementById("cover");
+  const ytLink = document.getElementById("ytLink");
+
+  if (yt) {
+    cover.src = ytThumb(yt);
+    ytLink.href = ytUrl(yt);
+    ytLink.style.display = "inline-block";
+  } else {
+    // 如果你冇 videoId，至少有張 placeholder
+    cover.src = "https://images.unsplash.com/photo-1492724441997-5dc865305da7?q=80&w=1600";
+    ytLink.style.display = "none";
+  }
+</script>
 
 </body>
 </html>
