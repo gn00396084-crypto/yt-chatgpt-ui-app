@@ -5,23 +5,24 @@
   <title>找一首歌｜故事說音樂</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
-    body {
-      font-family: system-ui;
-      background: #fff;
-      color: #111;
-      padding: 32px;
+    body { font-family: system-ui; background:#fff; color:#111; padding:24px; }
+    h2 { margin: 0 0 8px; }
+    p { margin: 0 0 16px; line-height:1.7; }
+    input { width:100%; padding:14px; font-size:16px; margin:12px 0 14px; }
+    .grid { display:grid; grid-template-columns: 1fr; gap:12px; margin-top: 12px; }
+    .card {
+      display:flex; gap:12px; align-items:center;
+      border:1px solid #e7e7e7; border-radius:12px; padding:12px;
+      text-decoration:none; color:#111;
     }
-    input {
-      width: 100%;
-      padding: 14px;
-      font-size: 16px;
-      margin-top: 16px;
+    .thumb {
+      width:120px; aspect-ratio:16/9; border-radius:10px;
+      object-fit:cover; background:#f2f2f2; flex:0 0 auto;
     }
-    button {
-      margin-top: 16px;
-      padding: 10px 16px;
-      font-size: 15px;
-    }
+    .meta { flex: 1; min-width: 0; }
+    .title { font-weight:700; margin:0 0 4px; }
+    .desc { margin:0; color:#444; font-size:14px; line-height:1.5; }
+    .hint { color:#666; font-size:13px; margin-top:8px; }
   </style>
 </head>
 <body>
@@ -29,16 +30,61 @@
 <h2>不是每一次，都要找一首歌。</h2>
 <p>有時，只是想被陪一會。</p>
 
-<input id="q" placeholder="輸入一首你想被理解的歌…" />
+<input id="q" placeholder="輸入歌名（或關鍵字）…" oninput="render()" />
 
-<button onclick="go()">打開故事</button>
+<div class="hint">提示：縮圖來自 YouTube（只要你填 videoId 就一定有）。</div>
+
+<div id="list" class="grid"></div>
 
 <script>
-function go() {
-  const q = document.getElementById("q").value.trim();
-  if (!q) return;
-  location.href = "/ui-videos.html?title=" + encodeURIComponent(q);
-}
+  // ✅ 把 yt 換成你自己的 YouTube videoId 就得
+  const SONGS = [
+    { title: "擁用（我要你對我坦誠）", artist: "張廣暖", mood: "清醒離開｜委屈→憤怒→放下", yt: "dQw4w9WgXcQ" },
+    { title: "我想見見你", artist: "姜珈", mood: "想見卻不能見｜克制、想念", yt: "dQw4w9WgXcQ" },
+    { title: "忍住（我把想念忍住）", artist: "司馬針砭光", mood: "夜晚最難｜壓抑、獨自承受", yt: "dQw4w9WgXcQ" },
+    { title: "我眼裡的雨", artist: "李林夕", mood: "雨天代表作｜回憶、慢慢冷卻", yt: "dQw4w9WgXcQ" },
+    { title: "清空", artist: "休眠火山", mood: "整理期｜告別、重新呼吸", yt: "dQw4w9WgXcQ" },
+  ];
+
+  function ytThumb(id){
+    // YouTube 縮圖：穩定可用
+    return `https://i.ytimg.com/vi/${encodeURIComponent(id)}/hqdefault.jpg`;
+  }
+
+  function render(){
+    const q = (document.getElementById("q").value || "").trim().toLowerCase();
+    const list = document.getElementById("list");
+    list.innerHTML = "";
+
+    const filtered = SONGS.filter(s =>
+      !q ||
+      s.title.toLowerCase().includes(q) ||
+      s.artist.toLowerCase().includes(q) ||
+      s.mood.toLowerCase().includes(q)
+    );
+
+    filtered.forEach(s => {
+      const href =
+        `/ui-videos.html?title=${encodeURIComponent(s.title)}`
+        + `&artist=${encodeURIComponent(s.artist)}`
+        + `&mood=${encodeURIComponent(s.mood)}`
+        + `&yt=${encodeURIComponent(s.yt)}`;
+
+      const a = document.createElement("a");
+      a.className = "card";
+      a.href = href;
+      a.innerHTML = `
+        <img class="thumb" src="${ytThumb(s.yt)}" alt="thumbnail" loading="lazy" />
+        <div class="meta">
+          <div class="title">${s.title} — ${s.artist}</div>
+          <p class="desc">${s.mood}</p>
+        </div>
+      `;
+      list.appendChild(a);
+    });
+  }
+
+  render();
 </script>
 
 </body>
