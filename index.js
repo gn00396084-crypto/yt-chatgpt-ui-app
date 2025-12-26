@@ -1,4 +1,5 @@
-// index.js — MCP server (official UI templates)
+// index.js — MCP server (single-widget architecture)
+// Env required: CF_WORKER_BASE_URL = https://xxx.workers.dev
 
 import { createServer } from "node:http";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -25,12 +26,13 @@ const MCP_METHODS = new Set(["POST", "GET", "DELETE"]);
 const server = createServer(async (req, res) => {
   const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
 
+  // health
   if (req.method === "GET" && url.pathname === "/") {
     res.writeHead(200, { "content-type": "text/plain; charset=utf-8" }).end("OK");
     return;
   }
 
-  // CORS preflight
+  // CORS preflight for MCP
   if (req.method === "OPTIONS" && url.pathname.startsWith(MCP_PATH)) {
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Methods", "GET,POST,DELETE,OPTIONS");
