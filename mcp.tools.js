@@ -8,31 +8,34 @@ export function registerTools(mcp, env) {
   const NOAUTH = [{ type: "noauth" }];
 
   const emptySchema = z.object({}).strict();
+
+  // ✅ 分頁參數：limit + offset
   const listSchema = z.object({
-    limit: z.number().int().min(1).max(500).optional()
+    limit: z.number().int().min(1).max(200).optional(),
+    offset: z.number().int().min(0).max(5000).optional()
   }).strict();
+
   const searchSchema = z.object({
     query: z.string().min(1),
-    limit: z.number().int().min(1).max(200).optional()
+    limit: z.number().int().min(1).max(200).optional(),
+    offset: z.number().int().min(0).max(5000).optional()
   }).strict();
 
   // ✅ 入口工具：綁 template（outputTemplate）
   const entryMeta = (extra = {}) => ({
-    securitySchemes: NOAUTH,               // mirror
-    "openai/outputTemplate": WIDGET_URI,   // ✅ only here
+    "openai/outputTemplate": WIDGET_URI,
     "openai/widgetAccessible": true,
     ...extra
   });
 
-  // ✅ widget-only 工具：不綁 template（避免「hidden tool 綁 template」導致 template 不可用）
+  // ✅ widget-only 工具：不綁 template（避免 hidden-tool template 問題）
   const widgetOnlyMeta = (extra = {}) => ({
-    securitySchemes: NOAUTH,               // mirror
     "openai/widgetAccessible": true,
     "openai/visibility": "private",
     ...extra
   });
 
-  // simple cache to avoid frequent worker fetch
+  // cache to avoid frequent worker fetch
   let cache = { ts: 0, idx: null };
   async function getIndexCached(limit = 500) {
     const now = Date.now();
@@ -75,7 +78,7 @@ export function registerTools(mcp, env) {
     })
   );
 
-  // ---------------- Hidden widget tools (NO outputTemplate) ----------------
+  // ---------------- Hidden widget tools (paged) ----------------
   mcp.registerTool(
     "list_videos",
     {
@@ -84,15 +87,19 @@ export function registerTools(mcp, env) {
       securitySchemes: NOAUTH,
       _meta: widgetOnlyMeta()
     },
-    async ({ limit }) => {
-      const L = limit ?? 30;
+    async ({ limit, offset }) => {
+      const L = limit ?? 3;
+      const O = offset ?? 0;
+
       const idx = await getIndexCached(500);
       const channelTitle = String(idx.channelTitle || "");
 
-      const videos = (idx.videos || [])
-        .slice(0, L)
-        .map(v => enrichVideo(v, channelTitle))
-        .filter(v => v.videoId);
+      const all = (idx.videos || []).map(v => enrichVideo(v, channelTitle)).filter(v => v.videoId);
+      const total = all.length;
+
+      const start = Math.min(Math.max(0, O), total);
+      const end = Math.min(start + L, total);
+      const page = all.slice(start, end);
 
       return {
         content: [],
@@ -100,7 +107,10 @@ export function registerTools(mcp, env) {
           channelTitle,
           fetchedAt: String(idx.fetchedAt || ""),
           query: "",
-          videos
+          offset: start,
+          limit: L,
+          total,
+          videos: page
         },
         _meta: { mode: "LIST" }
       };
@@ -115,17 +125,23 @@ export function registerTools(mcp, env) {
       securitySchemes: NOAUTH,
       _meta: widgetOnlyMeta()
     },
-    async ({ query, limit }) => {
-      const L = limit ?? 30;
+    async ({ query, limit, offset }) => {
+      const L = limit ?? 3;
+      const O = offset ?? 0;
+
       const idx = await getIndexCached(500);
       const channelTitle = String(idx.channelTitle || "");
       const q = query.toLowerCase();
 
-      const videos = (idx.videos || [])
+      const filtered = (idx.videos || [])
         .filter(v => String(v.title || "").toLowerCase().includes(q))
-        .slice(0, L)
         .map(v => enrichVideo(v, channelTitle))
         .filter(v => v.videoId);
+
+      const total = filtered.length;
+      const start = Math.min(Math.max(0, O), total);
+      const end = Math.min(start + L, total);
+      const page = filtered.slice(start, end);
 
       return {
         content: [],
@@ -133,7 +149,10 @@ export function registerTools(mcp, env) {
           channelTitle,
           fetchedAt: String(idx.fetchedAt || ""),
           query,
-          videos
+          offset: start,
+          limit: L,
+          total,
+          videos: page
         },
         _meta: { mode: "SEARCH", query }
       };
