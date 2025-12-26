@@ -23,19 +23,10 @@
       background: transparent;
       cursor: pointer;
     }
-    .row button[disabled]{
-      opacity: .45;
-      cursor: not-allowed;
-    }
+    .row button[disabled]{ opacity:.45; cursor:not-allowed; }
     .hint { margin-top: 8px; font-size: 12px; opacity: .7; line-height: 1.4; }
     .grid { margin-top: 12px; display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
-    .card {
-      border: 1px solid rgba(0,0,0,.12);
-      border-radius: 16px;
-      overflow: hidden;
-      cursor: pointer;
-      background: rgba(0,0,0,.02);
-    }
+    .card { border: 1px solid rgba(0,0,0,.12); border-radius: 16px; overflow: hidden; cursor: pointer; background: rgba(0,0,0,.02); }
     .thumb { width: 100%; aspect-ratio: 16/9; object-fit: cover; display:block; background:#eee; }
     .meta { padding: 10px; }
     .title { font-size: 14px; font-weight: 650; line-height: 1.25; }
@@ -53,21 +44,24 @@
     const ROOT = document.getElementById("app");
     const SET_GLOBALS_EVENT = "openai:set_globals";
 
-    // ---------- state ----------
     let state = {
       view: "list",         // "list" | "detail"
       mode: "LIST",         // "LIST" | "SEARCH"
-      pageSize: 3,          // ✅ 預設只顯示 3 筆
-      page: 1,              // 1-based
+      pageSize: 3,          // ✅ 預設 3 筆
+      page: 1,
       query: "",
       selectedId: "",
       channelTitle: "",
       videos: [],
-      total: 0,             // total results for current mode/query
+      total: 0,
+      pageCount: 1,
+      hasPrev: false,
+      hasNext: false,
+      snapshot: "",         // ✅ 快照 token（避免分頁時資料跳）
       status: ""
     };
 
-    // restore persisted widgetState if exists
+    // restore persisted widgetState
     try {
       const ws = window.openai?.widgetState;
       if (ws) {
@@ -77,6 +71,7 @@
         state.page = Number.isFinite(ws.page) ? Math.max(1, ws.page) : state.page;
         state.query = ws.query || state.query;
         state.selectedId = ws.selectedId || state.selectedId;
+        state.snapshot = ws.snapshot || state.snapshot;
       }
     } catch {}
 
@@ -88,12 +83,12 @@
           pageSize: state.pageSize,
           page: state.page,
           query: state.query,
-          selectedId: state.selectedId
+          selectedId: state.selectedId,
+          snapshot: state.snapshot
         });
       } catch {}
     }
 
-    // ---------- helpers ----------
     function escapeHtml(s) {
       return String(s ?? "")
         .replaceAll("&","&amp;").replaceAll("<","&lt;")
@@ -106,13 +101,6 @@
       window.open(href, "_blank", "noopener,noreferrer");
     }
 
-    function totalPages() {
-      const t = Number(state.total || 0);
-      const ps = Number(state.pageSize || 1);
-      if (t <= 0) return 1;
-      return Math.max(1, Math.ceil(t / ps));
-    }
-
     function currentOffset() {
       const p = Math.max(1, Number(state.page || 1));
       const ps = Math.max(1, Number(state.pageSize || 1));
@@ -121,16 +109,23 @@
 
     function applyToolStructured(sc) {
       if (!sc) return;
+
       if (typeof sc.channelTitle === "string") state.channelTitle = sc.channelTitle;
       if (typeof sc.query === "string") state.query = sc.query;
 
+      if (typeof sc.snapshot === "string") state.snapshot = sc.snapshot;
+
       if (Number.isFinite(sc.total)) state.total = sc.total;
       if (Number.isFinite(sc.limit)) state.pageSize = Math.max(1, sc.limit);
-      if (Number.isFinite(sc.offset) && Number.isFinite(sc.limit) && sc.limit > 0) {
-        state.page = Math.floor(sc.offset / sc.limit) + 1;
-      }
+
+      if (Number.isFinite(sc.pageCount)) state.pageCount = Math.max(1, sc.pageCount);
+      if (Number.isFinite(sc.page)) state.page = Math.max(1, sc.page);
+
+      if (typeof sc.hasPrev === "boolean") state.hasPrev = sc.hasPrev;
+      if (typeof sc.hasNext === "boolean") state.hasNext = sc.hasNext;
 
       if (Array.isArray(sc.videos)) state.videos = sc.videos;
+
       persistWidgetState();
     }
 
@@ -156,15 +151,22 @@
     }
 
     function loadListPage() {
-      const offset = currentOffset();
-      return callTool("list_videos", { offset, limit: state.pageSize });
+      return callTool("list_videos", {
+        offset: currentOffset(),
+        limit: state.pageSize,
+        snapshot: state.snapshot || undefined
+      });
     }
 
     function loadSearchPage() {
-      const offset = currentOffset();
       const q = (state.query || "").trim();
       if (!q) return;
-      return callTool("search_videos", { query: q, offset, limit: state.pageSize });
+      return callTool("search_videos", {
+        query: q,
+        offset: currentOffset(),
+        limit: state.pageSize,
+        snapshot: state.snapshot || undefined
+      });
     }
 
     function openDetail(videoId) {
@@ -183,13 +185,10 @@
       render();
     }
 
-    // ---------- render ----------
     function renderList() {
       const channel = state.channelTitle ? `・${state.channelTitle}` : "";
-      const tp = totalPages();
       const p = Math.max(1, Number(state.page || 1));
-      const canPrev = p > 1;
-      const canNext = p < tp;
+      const pc = Math.max(1, Number(state.pageCount || 1));
       const totalText = state.total ? `共 ${state.total} 筆` : "—";
 
       ROOT.innerHTML = `
@@ -200,9 +199,9 @@
         </div>
 
         <div class="row" style="margin-top:10px;">
-          <button id="btnPrev" ${canPrev ? "" : "disabled"}>上一頁</button>
-          <button id="btnNext" ${canNext ? "" : "disabled"}>下一頁</button>
-          <span class="badge">第 ${p} / ${tp} 頁</span>
+          <button id="btnPrev" ${state.hasPrev ? "" : "disabled"}>上一頁</button>
+          <button id="btnNext" ${state.hasNext ? "" : "disabled"}>下一頁</button>
+          <span class="badge">第 ${p} / ${pc} 頁</span>
           <span class="badge">${escapeHtml(totalText)}</span>
         </div>
 
@@ -227,21 +226,23 @@
         </div>
       `.trim();
 
-      // 最新（回到 LIST 第 1 頁）
+      // ✅ 最新：重置 snapshot 取新快照（避免舊快照）
       ROOT.querySelector("#btnLatest")?.addEventListener("click", () => {
         state.mode = "LIST";
         state.page = 1;
+        state.snapshot = "";
         persistWidgetState();
         loadListPage();
       });
 
-      // 搜尋（回到 SEARCH 第 1 頁）
+      // ✅ 搜尋：重置 snapshot（新搜尋就新快照）
       ROOT.querySelector("#btnSearch")?.addEventListener("click", () => {
         const q = ROOT.querySelector("#q")?.value?.trim();
         if (!q) return;
         state.mode = "SEARCH";
         state.page = 1;
         state.query = q;
+        state.snapshot = "";
         persistWidgetState();
         loadSearchPage();
       });
@@ -250,24 +251,22 @@
         if (e.key === "Enter") ROOT.querySelector("#btnSearch")?.click();
       });
 
-      // 分頁
       ROOT.querySelector("#btnPrev")?.addEventListener("click", () => {
-        if (state.page <= 1) return;
-        state.page -= 1;
+        if (!state.hasPrev) return;
+        state.page = Math.max(1, state.page - 1);
         persistWidgetState();
         if (state.mode === "SEARCH") loadSearchPage();
         else loadListPage();
       });
 
       ROOT.querySelector("#btnNext")?.addEventListener("click", () => {
-        if (state.page >= totalPages()) return;
-        state.page += 1;
+        if (!state.hasNext) return;
+        state.page = state.page + 1;
         persistWidgetState();
         if (state.mode === "SEARCH") loadSearchPage();
         else loadListPage();
       });
 
-      // 卡片點擊
       ROOT.querySelectorAll(".card").forEach(card => {
         card.addEventListener("click", () => openDetail(card.getAttribute("data-id")));
       });
@@ -308,19 +307,12 @@
       else renderList();
     }
 
-    // host globals updated event
-    window.addEventListener(SET_GLOBALS_EVENT, () => {
-      // 不主動 sync toolOutput，避免入口工具 output 覆蓋資料
-      render();
-    }, { passive: true });
+    window.addEventListener(SET_GLOBALS_EVENT, () => { render(); }, { passive: true });
 
-    // first paint
     render();
 
-    // auto load initial page
+    // 初次載入：如果有 snapshot（上次快照）就沿用，否則工具會回新 snapshot
     if (!state.videos?.length) {
-      state.page = Math.max(1, state.page || 1);
-      persistWidgetState();
       if (state.mode === "SEARCH" && (state.query || "").trim()) loadSearchPage();
       else loadListPage();
     }
