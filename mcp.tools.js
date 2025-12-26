@@ -1,90 +1,86 @@
 import { z } from "zod";
-import { HOME_URI, VIDEOS_URI, SEARCH_URI } from "./mcp.resources.js";
+import { WIDGET_URI } from "./mcp.resources.js";
 import { makeWorkerClient } from "./worker.client.js";
 
 export function registerTools(mcp, env) {
   const { fetchIndex, normalize } = makeWorkerClient(env);
 
-  /* ---------------- Schemas ---------------- */
+  const NOAUTH = [{ type: "noauth" }];
+  const emptySchema = z.object({}).strict();
   const listSchema = z.object({
-    limit: z.number().int().min(1).max(500).optional()
-  });
-
+    limit: z.number().int().min(1).max(200).optional()
+  }).strict();
   const searchSchema = z.object({
     query: z.string().min(1),
     limit: z.number().int().min(1).max(200).optional()
+  }).strict();
+
+  // ✅ 官方：_meta["openai/outputTemplate"] 指向 ui://widget/... :contentReference[oaicite:10]{index=10}
+  const baseMeta = (extra = {}) => ({
+    "openai/outputTemplate": WIDGET_URI,
+    "openai/widgetAccessible": true,
+    ...extra
   });
 
-  const emptySchema = z.object({}).strict();
-
-  // ✅ Required by Apps SDK tool descriptor rules
-  const NOAUTH = [{ type: "noauth" }];
-
-  // Helper to ensure every tool satisfies required meta fields
-  function toolMeta(outputTemplate) {
-    return {
-      securitySchemes: NOAUTH,                 // ✅ required mirror in _meta :contentReference[oaicite:1]{index=1}
-      "openai/outputTemplate": outputTemplate, // ✅ required :contentReference[oaicite:2]{index=2}
-      "openai/widgetAccessible": true,         // ✅ allow widget → tool calls :contentReference[oaicite:3]{index=3}
-    };
+  // 簡單快取，避免每次 search 都打 worker
+  let cache = { ts: 0, idx: null };
+  async function getIndexCached(limit = 500) {
+    const now = Date.now();
+    if (cache.idx && (now - cache.ts) < 60_000) return cache.idx;
+    const idx = await fetchIndex(limit);
+    cache = { ts: now, idx };
+    return idx;
   }
 
-  /* ---------------- NAV tools ---------------- */
+  // ✅ 1) 公開：只負責「開 app」
   mcp.registerTool(
-    "open_home_page",
+    "youtube_finder",
     {
-      title: "Open Home Page",
+      title: "Open YouTube Finder",
+      description: "Open the YouTube Finder widget.",
       inputSchema: emptySchema,
-
-      // ✅ Put securitySchemes at top-level too
       securitySchemes: NOAUTH,
-
-      _meta: toolMeta(HOME_URI)
+      _meta: baseMeta({
+        "openai/toolInvocation/invoking": "正在打開 YouTube Finder…",
+        "openai/toolInvocation/invoked": "YouTube Finder 已開啟。"
+      })
     },
     async () => ({
-      content: [{ type: "text", text: "Open home page" }],
-      structuredContent: {},
-      _meta: { mode: "NAV", page: "HOME" }
+      content: [{ type: "text", text: "YouTube Finder opened." }],
+      structuredContent: { ready: true, videos: [] },
+      _meta: {}
     })
   );
 
-  mcp.registerTool(
-    "open_search_page",
-    {
-      title: "Open Search Page",
-      inputSchema: emptySchema,
-      securitySchemes: NOAUTH,
-      _meta: toolMeta(SEARCH_URI)
-    },
-    async () => ({
-      content: [{ type: "text", text: "Open search page" }],
-      structuredContent: {},
-      _meta: { mode: "NAV", page: "SEARCH" }
-    })
-  );
-
-  /* ---------------- Data tools ---------------- */
+  // ✅ 2) 私有：最新列表（widget 內 callTool 用）
   mcp.registerTool(
     "list_videos",
     {
-      title: "List Videos",
+      title: "List videos",
       inputSchema: listSchema,
       securitySchemes: NOAUTH,
-      _meta: toolMeta(VIDEOS_URI)
+      _meta: baseMeta({
+        "openai/visibility": "private"
+      })
     },
     async ({ limit }) => {
       const L = limit ?? 30;
-      const idx = await fetchIndex(L);
-      const videos = (idx.videos || []).slice(0, L).map(normalize);
+      const idx = await getIndexCached(500);
+
+      const videos = (idx.videos || [])
+        .slice(0, L)
+        .map(normalize)
+        .map(v => ({
+          ...v,
+          thumbnailUrl: v.videoId ? `https://i.ytimg.com/vi/${v.videoId}/mqdefault.jpg` : ""
+        }));
 
       return {
-        content: [{ type: "text", text: `Fetched ${videos.length} videos` }],
+        content: [],
         structuredContent: {
-          channelId: String(idx.channelId || ""),
           channelTitle: String(idx.channelTitle || ""),
-          totalVideos: Number(idx.totalVideos || 0),
           fetchedAt: String(idx.fetchedAt || ""),
-          cachedAt: String(idx.cachedAt || ""),
+          query: "",
           videos
         },
         _meta: { mode: "LIST" }
@@ -92,35 +88,40 @@ export function registerTools(mcp, env) {
     }
   );
 
+  // ✅ 3) 私有：搜尋（widget 內 callTool 用）
   mcp.registerTool(
     "search_videos",
     {
-      title: "Search Videos",
+      title: "Search videos",
       inputSchema: searchSchema,
       securitySchemes: NOAUTH,
-      _meta: toolMeta(SEARCH_URI)
+      _meta: baseMeta({
+        "openai/visibility": "private"
+      })
     },
     async ({ query, limit }) => {
       const L = limit ?? 30;
-      const idx = await fetchIndex(500);
+      const idx = await getIndexCached(500);
       const q = query.toLowerCase();
 
       const videos = (idx.videos || [])
         .filter(v => String(v.title || "").toLowerCase().includes(q))
         .slice(0, L)
-        .map(normalize);
+        .map(normalize)
+        .map(v => ({
+          ...v,
+          thumbnailUrl: v.videoId ? `https://i.ytimg.com/vi/${v.videoId}/mqdefault.jpg` : ""
+        }));
 
       return {
-        content: [{ type: "text", text: `Search "${query}" → ${videos.length} results` }],
+        content: [],
         structuredContent: {
-          channelId: String(idx.channelId || ""),
           channelTitle: String(idx.channelTitle || ""),
-          totalVideos: Number(idx.totalVideos || 0),
           fetchedAt: String(idx.fetchedAt || ""),
-          cachedAt: String(idx.cachedAt || ""),
+          query,
           videos
         },
-        _meta: { mode: "SEARCH", query }
+        _meta: { mode: "SEARCH" }
       };
     }
   );
