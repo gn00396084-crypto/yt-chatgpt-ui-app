@@ -23,7 +23,7 @@
       background: transparent;
       cursor: pointer;
     }
-    .hint { margin-top: 8px; font-size: 12px; opacity: .7; }
+    .hint { margin-top: 8px; font-size: 12px; opacity: .7; line-height: 1.4; }
     .grid { margin-top: 12px; display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
     .card {
       border: 1px solid rgba(0,0,0,.12);
@@ -39,6 +39,7 @@
     .detail { display:flex; flex-direction: column; gap: 10px; }
     .detail .actions { display:flex; gap:8px; flex-wrap:wrap; }
     .badge { display:inline-flex; padding: 4px 8px; border: 1px solid rgba(0,0,0,.15); border-radius: 999px; font-size: 12px; opacity:.8; }
+    .err { color: #b00020; opacity: .95; }
   </style>
 </head>
 <body>
@@ -48,42 +49,59 @@
     const ROOT = document.getElementById("app");
     const SET_GLOBALS_EVENT = "openai:set_globals";
 
-    function safe(obj, fallback) { return obj == null ? fallback : obj; }
-
-    function loadPersisted() {
-      return safe(window.openai?.widgetState, {});
-    }
-    function persist(patch) {
-      const next = { ...state, ...patch };
-      state = next;
-      window.openai?.setWidgetState?.({
-        view: state.view,
-        query: state.query,
-        selectedId: state.selectedId,
-      });
-    }
-
+    // ---------- state ----------
     let state = {
-      view: "list",        // "list" | "detail"
+      view: "list",     // "list" | "detail"
       query: "",
       selectedId: "",
       channelTitle: "",
       videos: [],
-      status: "",
-      ...loadPersisted(),
+      status: ""
     };
 
-    function syncFromToolOutput() {
-      const out = window.openai?.toolOutput;
-      if (!out) return;
-      if (typeof out.channelTitle === "string") state.channelTitle = out.channelTitle;
-      if (typeof out.query === "string") state.query = out.query;
-      if (Array.isArray(out.videos)) state.videos = out.videos;
+    // restore persisted widgetState if exists
+    try {
+      if (window.openai?.widgetState) {
+        const ws = window.openai.widgetState;
+        state.view = ws.view || state.view;
+        state.query = ws.query || state.query;
+        state.selectedId = ws.selectedId || state.selectedId;
+      }
+    } catch {}
+
+    function persistWidgetState() {
+      try {
+        window.openai?.setWidgetState?.({
+          view: state.view,
+          query: state.query,
+          selectedId: state.selectedId
+        });
+      } catch {}
     }
 
-    async function call(name, args) {
+    // ---------- helpers ----------
+    function escapeHtml(s) {
+      return String(s ?? "")
+        .replaceAll("&","&amp;").replaceAll("<","&lt;")
+        .replaceAll(">","&gt;").replaceAll('"',"&quot;")
+        .replaceAll("'","&#039;");
+    }
+
+    function openExternal(href) {
+      if (window.openai?.openExternal) return window.openai.openExternal({ href });
+      window.open(href, "_blank", "noopener,noreferrer");
+    }
+
+    function applyToolStructured(structuredContent) {
+      if (!structuredContent) return;
+      if (typeof structuredContent.channelTitle === "string") state.channelTitle = structuredContent.channelTitle;
+      if (typeof structuredContent.query === "string") state.query = structuredContent.query;
+      if (Array.isArray(structuredContent.videos)) state.videos = structuredContent.videos;
+    }
+
+    async function callTool(name, args) {
       if (!window.openai?.callTool) {
-        state.status = "window.openai.callTool 不可用（請檢查 tool 是否設了 openai/widgetAccessible）";
+        state.status = "此頁需在 ChatGPT Apps Widget 內運行（window.openai.callTool 不可用）";
         render();
         return null;
       }
@@ -91,14 +109,7 @@
         state.status = "載入中…";
         render();
         const r = await window.openai.callTool(name, args);
-        // 兼容：有些 runtime 會直接回傳 structuredContent；同時 host 亦可能會更新 toolOutput
-        if (r?.structuredContent) {
-          state.channelTitle = r.structuredContent.channelTitle ?? state.channelTitle;
-          state.query = r.structuredContent.query ?? state.query;
-          state.videos = r.structuredContent.videos ?? state.videos;
-        } else {
-          syncFromToolOutput();
-        }
+        if (r?.structuredContent) applyToolStructured(r.structuredContent);
         state.status = "";
         render();
         return r;
@@ -109,22 +120,23 @@
       }
     }
 
-    function openExternal(href) {
-      if (window.openai?.openExternal) return window.openai.openExternal({ href });
-      window.open(href, "_blank", "noopener,noreferrer");
-    }
-
     function openDetail(videoId) {
       const v = (state.videos || []).find(x => x.videoId === videoId);
       if (!v) return;
-      persist({ view: "detail", selectedId: videoId });
-      render();
-    }
-    function backToList() {
-      persist({ view: "list", selectedId: "" });
+      state.view = "detail";
+      state.selectedId = videoId;
+      persistWidgetState();
       render();
     }
 
+    function backToList() {
+      state.view = "list";
+      state.selectedId = "";
+      persistWidgetState();
+      render();
+    }
+
+    // ---------- render ----------
     function renderList() {
       const channel = state.channelTitle ? `・${state.channelTitle}` : "";
       ROOT.innerHTML = `
@@ -133,13 +145,15 @@
           <button id="btnSearch">搜尋</button>
           <button id="btnLatest">最新</button>
         </div>
+
         <div class="hint">
-          <span class="badge">縮圖：i.ytimg.com</span>
-          <span class="badge">點卡片開詳情</span>
-          <span class="badge">開外部連結用 openExternal</span>
+          <span class="badge">點卡片看詳情</span>
+          <span class="badge">外部連結用 openExternal</span>
           ${channel}
         </div>
-        ${state.status ? `<div class="hint">⏳ ${escapeHtml(state.status)}</div>` : ""}
+
+        ${state.status ? `<div class="hint ${state.status.includes("失敗") ? "err" : ""}">⏳ ${escapeHtml(state.status)}</div>` : ""}
+
         <div class="grid">
           ${(state.videos || []).map(v => `
             <div class="card" data-id="${escapeHtml(v.videoId)}">
@@ -153,16 +167,20 @@
         </div>
       `.trim();
 
-      ROOT.querySelector("#btnLatest")?.addEventListener("click", () => call("list_videos", { limit: 30 }));
+      ROOT.querySelector("#btnLatest")?.addEventListener("click", () => callTool("list_videos", { limit: 30 }));
+
       ROOT.querySelector("#btnSearch")?.addEventListener("click", () => {
         const q = ROOT.querySelector("#q")?.value?.trim();
         if (!q) return;
-        persist({ query: q });
-        call("search_videos", { query: q, limit: 30 });
+        state.query = q;
+        persistWidgetState();
+        callTool("search_videos", { query: q, limit: 30 });
       });
+
       ROOT.querySelector("#q")?.addEventListener("keydown", (e) => {
         if (e.key === "Enter") ROOT.querySelector("#btnSearch")?.click();
       });
+
       ROOT.querySelectorAll(".card").forEach(card => {
         card.addEventListener("click", () => openDetail(card.getAttribute("data-id")));
       });
@@ -178,14 +196,18 @@
             <button id="btnBack">← 返回</button>
             <span class="badge">${escapeHtml(v.videoId)}</span>
           </div>
+
           <img class="thumb" src="${escapeHtml(v.thumbnailUrl || "")}" alt="" />
+
           <div class="title">${escapeHtml(v.title || "")}</div>
           <div class="sub">${escapeHtml((v.channelTitle || state.channelTitle || "") + " " + (v.publishedAt || "").slice(0,10))}</div>
+
           <div class="actions">
             <button id="btnYT">在 YouTube 打開</button>
             <button id="btnShort">用 youtu.be 打開</button>
           </div>
-          ${state.status ? `<div class="hint">⏳ ${escapeHtml(state.status)}</div>` : ""}
+
+          ${state.status ? `<div class="hint ${state.status.includes("失敗") ? "err" : ""}">⏳ ${escapeHtml(state.status)}</div>` : ""}
         </div>
       `.trim();
 
@@ -195,26 +217,22 @@
     }
 
     function render() {
-      syncFromToolOutput();
       if (state.view === "detail") renderDetail();
       else renderList();
     }
 
-    function escapeHtml(s) {
-      return String(s ?? "")
-        .replaceAll("&","&amp;").replaceAll("<","&lt;")
-        .replaceAll(">","&gt;").replaceAll('"',"&quot;")
-        .replaceAll("'","&#039;");
-    }
+    // host globals updated event
+    window.addEventListener(SET_GLOBALS_EVENT, () => {
+      // 注意：不要每次 render 都 sync toolOutput；避免入口工具的 toolOutput 造成覆蓋
+      render();
+    }, { passive: true });
 
-    window.addEventListener(SET_GLOBALS_EVENT, () => { syncFromToolOutput(); render(); }, { passive: true });
-
-    // 初次 render
+    // first paint
     render();
 
-    // 如果係「開 app」但未有資料，就自動拉最新
+    // auto load latest if empty
     if (!state.videos?.length) {
-      call("list_videos", { limit: 30 });
+      callTool("list_videos", { limit: 30 });
     }
   </script>
 </body>
