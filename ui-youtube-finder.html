@@ -45,11 +45,12 @@
     const SET_GLOBALS_EVENT = "openai:set_globals";
 
     let state = {
-      view: "list",         // "list" | "detail"
-      mode: "LIST",         // "LIST" | "SEARCH"
-      pageSize: 3,          // ✅ 預設 3 筆
+      view: "list",
+      mode: "LIST",
+      pageSize: 3,
       page: 1,
       query: "",
+      effectiveQuery: "",
       selectedId: "",
       channelTitle: "",
       videos: [],
@@ -57,11 +58,10 @@
       pageCount: 1,
       hasPrev: false,
       hasNext: false,
-      snapshot: "",         // ✅ 快照 token（避免分頁時資料跳）
+      snapshot: "",
       status: ""
     };
 
-    // restore persisted widgetState
     try {
       const ws = window.openai?.widgetState;
       if (ws) {
@@ -112,6 +112,7 @@
 
       if (typeof sc.channelTitle === "string") state.channelTitle = sc.channelTitle;
       if (typeof sc.query === "string") state.query = sc.query;
+      if (typeof sc.effectiveQuery === "string") state.effectiveQuery = sc.effectiveQuery;
 
       if (typeof sc.snapshot === "string") state.snapshot = sc.snapshot;
 
@@ -189,7 +190,12 @@
       const channel = state.channelTitle ? `・${state.channelTitle}` : "";
       const p = Math.max(1, Number(state.page || 1));
       const pc = Math.max(1, Number(state.pageCount || 1));
-      const totalText = state.total ? `共 ${state.total} 筆` : "—";
+      const totalText = Number(state.total || 0) ? `共 ${state.total} 筆` : "共 0 筆";
+
+      const showEffective =
+        state.mode === "SEARCH" &&
+        (state.effectiveQuery || "") &&
+        (state.effectiveQuery !== (state.query || "").trim());
 
       ROOT.innerHTML = `
         <div class="row">
@@ -208,6 +214,7 @@
         <div class="hint">
           <span class="badge">每頁 ${state.pageSize} 筆</span>
           <span class="badge">點卡片看詳情</span>
+          ${showEffective ? `<span class="badge">實際搜尋：${escapeHtml(state.effectiveQuery)}</span>` : ""}
           ${channel}
         </div>
 
@@ -226,16 +233,15 @@
         </div>
       `.trim();
 
-      // ✅ 最新：重置 snapshot 取新快照（避免舊快照）
       ROOT.querySelector("#btnLatest")?.addEventListener("click", () => {
         state.mode = "LIST";
         state.page = 1;
         state.snapshot = "";
+        state.effectiveQuery = "";
         persistWidgetState();
         loadListPage();
       });
 
-      // ✅ 搜尋：重置 snapshot（新搜尋就新快照）
       ROOT.querySelector("#btnSearch")?.addEventListener("click", () => {
         const q = ROOT.querySelector("#q")?.value?.trim();
         if (!q) return;
@@ -243,6 +249,7 @@
         state.page = 1;
         state.query = q;
         state.snapshot = "";
+        state.effectiveQuery = "";
         persistWidgetState();
         loadSearchPage();
       });
@@ -311,7 +318,6 @@
 
     render();
 
-    // 初次載入：如果有 snapshot（上次快照）就沿用，否則工具會回新 snapshot
     if (!state.videos?.length) {
       if (state.mode === "SEARCH" && (state.query || "").trim()) loadSearchPage();
       else loadListPage();
