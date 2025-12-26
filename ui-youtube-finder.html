@@ -23,6 +23,10 @@
       background: transparent;
       cursor: pointer;
     }
+    .row button[disabled]{
+      opacity: .45;
+      cursor: not-allowed;
+    }
     .hint { margin-top: 8px; font-size: 12px; opacity: .7; line-height: 1.4; }
     .grid { margin-top: 12px; display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
     .card {
@@ -51,19 +55,26 @@
 
     // ---------- state ----------
     let state = {
-      view: "list",     // "list" | "detail"
+      view: "list",         // "list" | "detail"
+      mode: "LIST",         // "LIST" | "SEARCH"
+      pageSize: 3,          // ✅ 預設只顯示 3 筆
+      page: 1,              // 1-based
       query: "",
       selectedId: "",
       channelTitle: "",
       videos: [],
+      total: 0,             // total results for current mode/query
       status: ""
     };
 
     // restore persisted widgetState if exists
     try {
-      if (window.openai?.widgetState) {
-        const ws = window.openai.widgetState;
+      const ws = window.openai?.widgetState;
+      if (ws) {
         state.view = ws.view || state.view;
+        state.mode = ws.mode || state.mode;
+        state.pageSize = Number.isFinite(ws.pageSize) ? Math.max(1, ws.pageSize) : state.pageSize;
+        state.page = Number.isFinite(ws.page) ? Math.max(1, ws.page) : state.page;
         state.query = ws.query || state.query;
         state.selectedId = ws.selectedId || state.selectedId;
       }
@@ -73,6 +84,9 @@
       try {
         window.openai?.setWidgetState?.({
           view: state.view,
+          mode: state.mode,
+          pageSize: state.pageSize,
+          page: state.page,
           query: state.query,
           selectedId: state.selectedId
         });
@@ -92,11 +106,32 @@
       window.open(href, "_blank", "noopener,noreferrer");
     }
 
-    function applyToolStructured(structuredContent) {
-      if (!structuredContent) return;
-      if (typeof structuredContent.channelTitle === "string") state.channelTitle = structuredContent.channelTitle;
-      if (typeof structuredContent.query === "string") state.query = structuredContent.query;
-      if (Array.isArray(structuredContent.videos)) state.videos = structuredContent.videos;
+    function totalPages() {
+      const t = Number(state.total || 0);
+      const ps = Number(state.pageSize || 1);
+      if (t <= 0) return 1;
+      return Math.max(1, Math.ceil(t / ps));
+    }
+
+    function currentOffset() {
+      const p = Math.max(1, Number(state.page || 1));
+      const ps = Math.max(1, Number(state.pageSize || 1));
+      return (p - 1) * ps;
+    }
+
+    function applyToolStructured(sc) {
+      if (!sc) return;
+      if (typeof sc.channelTitle === "string") state.channelTitle = sc.channelTitle;
+      if (typeof sc.query === "string") state.query = sc.query;
+
+      if (Number.isFinite(sc.total)) state.total = sc.total;
+      if (Number.isFinite(sc.limit)) state.pageSize = Math.max(1, sc.limit);
+      if (Number.isFinite(sc.offset) && Number.isFinite(sc.limit) && sc.limit > 0) {
+        state.page = Math.floor(sc.offset / sc.limit) + 1;
+      }
+
+      if (Array.isArray(sc.videos)) state.videos = sc.videos;
+      persistWidgetState();
     }
 
     async function callTool(name, args) {
@@ -120,6 +155,18 @@
       }
     }
 
+    function loadListPage() {
+      const offset = currentOffset();
+      return callTool("list_videos", { offset, limit: state.pageSize });
+    }
+
+    function loadSearchPage() {
+      const offset = currentOffset();
+      const q = (state.query || "").trim();
+      if (!q) return;
+      return callTool("search_videos", { query: q, offset, limit: state.pageSize });
+    }
+
     function openDetail(videoId) {
       const v = (state.videos || []).find(x => x.videoId === videoId);
       if (!v) return;
@@ -139,6 +186,12 @@
     // ---------- render ----------
     function renderList() {
       const channel = state.channelTitle ? `・${state.channelTitle}` : "";
+      const tp = totalPages();
+      const p = Math.max(1, Number(state.page || 1));
+      const canPrev = p > 1;
+      const canNext = p < tp;
+      const totalText = state.total ? `共 ${state.total} 筆` : "—";
+
       ROOT.innerHTML = `
         <div class="row">
           <input id="q" placeholder="輸入關鍵字（歌名 / 歌手 / 主題）" value="${escapeHtml(state.query || "")}" />
@@ -146,9 +199,16 @@
           <button id="btnLatest">最新</button>
         </div>
 
+        <div class="row" style="margin-top:10px;">
+          <button id="btnPrev" ${canPrev ? "" : "disabled"}>上一頁</button>
+          <button id="btnNext" ${canNext ? "" : "disabled"}>下一頁</button>
+          <span class="badge">第 ${p} / ${tp} 頁</span>
+          <span class="badge">${escapeHtml(totalText)}</span>
+        </div>
+
         <div class="hint">
+          <span class="badge">每頁 ${state.pageSize} 筆</span>
           <span class="badge">點卡片看詳情</span>
-          <span class="badge">外部連結用 openExternal</span>
           ${channel}
         </div>
 
@@ -167,20 +227,47 @@
         </div>
       `.trim();
 
-      ROOT.querySelector("#btnLatest")?.addEventListener("click", () => callTool("list_videos", { limit: 30 }));
+      // 最新（回到 LIST 第 1 頁）
+      ROOT.querySelector("#btnLatest")?.addEventListener("click", () => {
+        state.mode = "LIST";
+        state.page = 1;
+        persistWidgetState();
+        loadListPage();
+      });
 
+      // 搜尋（回到 SEARCH 第 1 頁）
       ROOT.querySelector("#btnSearch")?.addEventListener("click", () => {
         const q = ROOT.querySelector("#q")?.value?.trim();
         if (!q) return;
+        state.mode = "SEARCH";
+        state.page = 1;
         state.query = q;
         persistWidgetState();
-        callTool("search_videos", { query: q, limit: 30 });
+        loadSearchPage();
       });
 
       ROOT.querySelector("#q")?.addEventListener("keydown", (e) => {
         if (e.key === "Enter") ROOT.querySelector("#btnSearch")?.click();
       });
 
+      // 分頁
+      ROOT.querySelector("#btnPrev")?.addEventListener("click", () => {
+        if (state.page <= 1) return;
+        state.page -= 1;
+        persistWidgetState();
+        if (state.mode === "SEARCH") loadSearchPage();
+        else loadListPage();
+      });
+
+      ROOT.querySelector("#btnNext")?.addEventListener("click", () => {
+        if (state.page >= totalPages()) return;
+        state.page += 1;
+        persistWidgetState();
+        if (state.mode === "SEARCH") loadSearchPage();
+        else loadListPage();
+      });
+
+      // 卡片點擊
       ROOT.querySelectorAll(".card").forEach(card => {
         card.addEventListener("click", () => openDetail(card.getAttribute("data-id")));
       });
@@ -223,16 +310,19 @@
 
     // host globals updated event
     window.addEventListener(SET_GLOBALS_EVENT, () => {
-      // 注意：不要每次 render 都 sync toolOutput；避免入口工具的 toolOutput 造成覆蓋
+      // 不主動 sync toolOutput，避免入口工具 output 覆蓋資料
       render();
     }, { passive: true });
 
     // first paint
     render();
 
-    // auto load latest if empty
+    // auto load initial page
     if (!state.videos?.length) {
-      callTool("list_videos", { limit: 30 });
+      state.page = Math.max(1, state.page || 1);
+      persistWidgetState();
+      if (state.mode === "SEARCH" && (state.query || "").trim()) loadSearchPage();
+      else loadListPage();
     }
   </script>
 </body>
