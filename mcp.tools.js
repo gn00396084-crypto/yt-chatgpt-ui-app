@@ -6,23 +6,33 @@ export function registerTools(mcp, env) {
   const { fetchIndex, normalize } = makeWorkerClient(env);
 
   const NOAUTH = [{ type: "noauth" }];
+
   const emptySchema = z.object({}).strict();
   const listSchema = z.object({
-    limit: z.number().int().min(1).max(200).optional()
+    limit: z.number().int().min(1).max(500).optional()
   }).strict();
   const searchSchema = z.object({
     query: z.string().min(1),
     limit: z.number().int().min(1).max(200).optional()
   }).strict();
 
-  // ✅ 官方：_meta["openai/outputTemplate"] 指向 ui://widget/... :contentReference[oaicite:10]{index=10}
-  const baseMeta = (extra = {}) => ({
-    "openai/outputTemplate": WIDGET_URI,
+  // ✅ 入口工具：綁 template（outputTemplate）
+  const entryMeta = (extra = {}) => ({
+    securitySchemes: NOAUTH,               // mirror
+    "openai/outputTemplate": WIDGET_URI,   // ✅ only here
     "openai/widgetAccessible": true,
     ...extra
   });
 
-  // 簡單快取，避免每次 search 都打 worker
+  // ✅ widget-only 工具：不綁 template（避免「hidden tool 綁 template」導致 template 不可用）
+  const widgetOnlyMeta = (extra = {}) => ({
+    securitySchemes: NOAUTH,               // mirror
+    "openai/widgetAccessible": true,
+    "openai/visibility": "private",
+    ...extra
+  });
+
+  // simple cache to avoid frequent worker fetch
   let cache = { ts: 0, idx: null };
   async function getIndexCached(limit = 500) {
     const now = Date.now();
@@ -32,7 +42,20 @@ export function registerTools(mcp, env) {
     return idx;
   }
 
-  // ✅ 1) 公開：只負責「開 app」
+  function enrichVideo(v, channelTitle) {
+    const base = normalize(v);
+    const videoId = base.videoId;
+    return {
+      videoId,
+      title: base.title,
+      url: base.url,
+      publishedAt: base.publishedAt,
+      channelTitle: String(channelTitle || ""),
+      thumbnailUrl: videoId ? `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg` : ""
+    };
+  }
+
+  // ---------------- Public entry tool ----------------
   mcp.registerTool(
     "youtube_finder",
     {
@@ -40,45 +63,41 @@ export function registerTools(mcp, env) {
       description: "Open the YouTube Finder widget.",
       inputSchema: emptySchema,
       securitySchemes: NOAUTH,
-      _meta: baseMeta({
+      _meta: entryMeta({
         "openai/toolInvocation/invoking": "正在打開 YouTube Finder…",
         "openai/toolInvocation/invoked": "YouTube Finder 已開啟。"
       })
     },
     async () => ({
       content: [{ type: "text", text: "YouTube Finder opened." }],
-      structuredContent: { ready: true, videos: [] },
-      _meta: {}
+      structuredContent: { ready: true },
+      _meta: { mode: "OPEN" }
     })
   );
 
-  // ✅ 2) 私有：最新列表（widget 內 callTool 用）
+  // ---------------- Hidden widget tools (NO outputTemplate) ----------------
   mcp.registerTool(
     "list_videos",
     {
-      title: "List videos",
+      title: "List Videos",
       inputSchema: listSchema,
       securitySchemes: NOAUTH,
-      _meta: baseMeta({
-        "openai/visibility": "private"
-      })
+      _meta: widgetOnlyMeta()
     },
     async ({ limit }) => {
       const L = limit ?? 30;
       const idx = await getIndexCached(500);
+      const channelTitle = String(idx.channelTitle || "");
 
       const videos = (idx.videos || [])
         .slice(0, L)
-        .map(normalize)
-        .map(v => ({
-          ...v,
-          thumbnailUrl: v.videoId ? `https://i.ytimg.com/vi/${v.videoId}/mqdefault.jpg` : ""
-        }));
+        .map(v => enrichVideo(v, channelTitle))
+        .filter(v => v.videoId);
 
       return {
         content: [],
         structuredContent: {
-          channelTitle: String(idx.channelTitle || ""),
+          channelTitle,
           fetchedAt: String(idx.fetchedAt || ""),
           query: "",
           videos
@@ -88,40 +107,35 @@ export function registerTools(mcp, env) {
     }
   );
 
-  // ✅ 3) 私有：搜尋（widget 內 callTool 用）
   mcp.registerTool(
     "search_videos",
     {
-      title: "Search videos",
+      title: "Search Videos",
       inputSchema: searchSchema,
       securitySchemes: NOAUTH,
-      _meta: baseMeta({
-        "openai/visibility": "private"
-      })
+      _meta: widgetOnlyMeta()
     },
     async ({ query, limit }) => {
       const L = limit ?? 30;
       const idx = await getIndexCached(500);
+      const channelTitle = String(idx.channelTitle || "");
       const q = query.toLowerCase();
 
       const videos = (idx.videos || [])
         .filter(v => String(v.title || "").toLowerCase().includes(q))
         .slice(0, L)
-        .map(normalize)
-        .map(v => ({
-          ...v,
-          thumbnailUrl: v.videoId ? `https://i.ytimg.com/vi/${v.videoId}/mqdefault.jpg` : ""
-        }));
+        .map(v => enrichVideo(v, channelTitle))
+        .filter(v => v.videoId);
 
       return {
         content: [],
         structuredContent: {
-          channelTitle: String(idx.channelTitle || ""),
+          channelTitle,
           fetchedAt: String(idx.fetchedAt || ""),
           query,
           videos
         },
-        _meta: { mode: "SEARCH" }
+        _meta: { mode: "SEARCH", query }
       };
     }
   );
