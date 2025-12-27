@@ -1,327 +1,375 @@
 <!doctype html>
-<html lang="zh-Hant">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>YouTube Finder</title>
-  <style>
-    :root { font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "PingFang TC", "Noto Sans CJK TC", "Microsoft JhengHei", sans-serif; }
-    body { margin: 0; }
-    .app { padding: 12px; }
-    .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
-    .row input{
-      flex:1; min-width: 220px;
-      padding: 10px 12px;
-      border: 1px solid rgba(0,0,0,.18);
-      border-radius: 12px;
-      outline: none;
-    }
-    .row button{
-      padding: 10px 12px;
-      border: 1px solid rgba(0,0,0,.18);
-      border-radius: 12px;
-      background: transparent;
-      cursor: pointer;
-    }
-    .row button[disabled]{ opacity:.45; cursor:not-allowed; }
-    .hint { margin-top: 8px; font-size: 12px; opacity: .7; line-height: 1.4; }
-    .grid { margin-top: 12px; display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
-    .card { border: 1px solid rgba(0,0,0,.12); border-radius: 16px; overflow: hidden; cursor: pointer; background: rgba(0,0,0,.02); }
-    .thumb { width: 100%; aspect-ratio: 16/9; object-fit: cover; display:block; background:#eee; }
-    .meta { padding: 10px; }
-    .title { font-size: 14px; font-weight: 650; line-height: 1.25; }
-    .sub { margin-top: 6px; font-size: 12px; opacity: .75; }
-    .detail { display:flex; flex-direction: column; gap: 10px; }
-    .detail .actions { display:flex; gap:8px; flex-wrap:wrap; }
-    .badge { display:inline-flex; padding: 4px 8px; border: 1px solid rgba(0,0,0,.15); border-radius: 999px; font-size: 12px; opacity:.8; }
-    .err { color: #b00020; opacity: .95; }
-  </style>
-</head>
-<body>
-  <div id="app" class="app"></div>
-
-  <script type="module">
-    const ROOT = document.getElementById("app");
-    const SET_GLOBALS_EVENT = "openai:set_globals";
-
-    let state = {
-      view: "list",
-      mode: "LIST",
-      pageSize: 3,
-      page: 1,
-      query: "",
-      effectiveQuery: "",
-      selectedId: "",
-      channelTitle: "",
-      videos: [],
-      total: 0,
-      pageCount: 1,
-      hasPrev: false,
-      hasNext: false,
-      snapshot: "",
-      status: ""
-    };
-
-    try {
-      const ws = window.openai?.widgetState;
-      if (ws) {
-        state.view = ws.view || state.view;
-        state.mode = ws.mode || state.mode;
-        state.pageSize = Number.isFinite(ws.pageSize) ? Math.max(1, ws.pageSize) : state.pageSize;
-        state.page = Number.isFinite(ws.page) ? Math.max(1, ws.page) : state.page;
-        state.query = ws.query || state.query;
-        state.selectedId = ws.selectedId || state.selectedId;
-        state.snapshot = ws.snapshot || state.snapshot;
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>YouTube Finder</title>
+    <style>
+      :root {
+        --bg: #0b0b0d;
+        --card: #141419;
+        --muted: rgba(255,255,255,.7);
+        --border: rgba(255,255,255,.10);
+        --chip: rgba(255,255,255,.08);
+        --btn: rgba(255,255,255,.10);
+        --btnHover: rgba(255,255,255,.16);
       }
-    } catch {}
-
-    function persistWidgetState() {
-      try {
-        window.openai?.setWidgetState?.({
-          view: state.view,
-          mode: state.mode,
-          pageSize: state.pageSize,
-          page: state.page,
-          query: state.query,
-          selectedId: state.selectedId,
-          snapshot: state.snapshot
-        });
-      } catch {}
-    }
-
-    function escapeHtml(s) {
-      return String(s ?? "")
-        .replaceAll("&","&amp;").replaceAll("<","&lt;")
-        .replaceAll(">","&gt;").replaceAll('"',"&quot;")
-        .replaceAll("'","&#039;");
-    }
-
-    function openExternal(href) {
-      if (window.openai?.openExternal) return window.openai.openExternal({ href });
-      window.open(href, "_blank", "noopener,noreferrer");
-    }
-
-    function currentOffset() {
-      const p = Math.max(1, Number(state.page || 1));
-      const ps = Math.max(1, Number(state.pageSize || 1));
-      return (p - 1) * ps;
-    }
-
-    function applyToolStructured(sc) {
-      if (!sc) return;
-
-      if (typeof sc.channelTitle === "string") state.channelTitle = sc.channelTitle;
-      if (typeof sc.query === "string") state.query = sc.query;
-      if (typeof sc.effectiveQuery === "string") state.effectiveQuery = sc.effectiveQuery;
-
-      if (typeof sc.snapshot === "string") state.snapshot = sc.snapshot;
-
-      if (Number.isFinite(sc.total)) state.total = sc.total;
-      if (Number.isFinite(sc.limit)) state.pageSize = Math.max(1, sc.limit);
-
-      if (Number.isFinite(sc.pageCount)) state.pageCount = Math.max(1, sc.pageCount);
-      if (Number.isFinite(sc.page)) state.page = Math.max(1, sc.page);
-
-      if (typeof sc.hasPrev === "boolean") state.hasPrev = sc.hasPrev;
-      if (typeof sc.hasNext === "boolean") state.hasNext = sc.hasNext;
-
-      if (Array.isArray(sc.videos)) state.videos = sc.videos;
-
-      persistWidgetState();
-    }
-
-    async function callTool(name, args) {
-      if (!window.openai?.callTool) {
-        state.status = "此頁需在 ChatGPT Apps Widget 內運行（window.openai.callTool 不可用）";
-        render();
-        return null;
+      body {
+        margin: 0;
+        font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+        background: var(--bg);
+        color: #fff;
       }
-      try {
-        state.status = "載入中…";
-        render();
-        const r = await window.openai.callTool(name, args);
-        if (r?.structuredContent) applyToolStructured(r.structuredContent);
-        state.status = "";
-        render();
-        return r;
-      } catch (e) {
-        state.status = "載入失敗：" + String(e?.message || e);
-        render();
-        return null;
+      .wrap { padding: 14px; }
+      .top {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 12px;
       }
-    }
-
-    function loadListPage() {
-      return callTool("list_videos", {
-        offset: currentOffset(),
-        limit: state.pageSize,
-        snapshot: state.snapshot || undefined
-      });
-    }
-
-    function loadSearchPage() {
-      const q = (state.query || "").trim();
-      if (!q) return;
-      return callTool("search_videos", {
-        query: q,
-        offset: currentOffset(),
-        limit: state.pageSize,
-        snapshot: state.snapshot || undefined
-      });
-    }
-
-    function openDetail(videoId) {
-      const v = (state.videos || []).find(x => x.videoId === videoId);
-      if (!v) return;
-      state.view = "detail";
-      state.selectedId = videoId;
-      persistWidgetState();
-      render();
-    }
-
-    function backToList() {
-      state.view = "list";
-      state.selectedId = "";
-      persistWidgetState();
-      render();
-    }
-
-    function renderList() {
-      const channel = state.channelTitle ? `・${state.channelTitle}` : "";
-      const p = Math.max(1, Number(state.page || 1));
-      const pc = Math.max(1, Number(state.pageCount || 1));
-      const totalText = Number(state.total || 0) ? `共 ${state.total} 筆` : "共 0 筆";
-
-      const showEffective =
-        state.mode === "SEARCH" &&
-        (state.effectiveQuery || "") &&
-        (state.effectiveQuery !== (state.query || "").trim());
-
-      ROOT.innerHTML = `
-        <div class="row">
-          <input id="q" placeholder="輸入關鍵字（歌名 / 歌手 / 主題）" value="${escapeHtml(state.query || "")}" />
+      .title {
+        font-size: 14px;
+        font-weight: 650;
+        opacity: .9;
+      }
+      .controls {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+      input[type="search"]{
+        height: 34px;
+        padding: 0 10px;
+        border-radius: 10px;
+        border: 1px solid var(--border);
+        background: rgba(255,255,255,.06);
+        color: #fff;
+        outline: none;
+        min-width: 200px;
+      }
+      button {
+        height: 34px;
+        padding: 0 10px;
+        border-radius: 10px;
+        border: 1px solid var(--border);
+        background: var(--btn);
+        color: #fff;
+        cursor: pointer;
+      }
+      button:hover { background: var(--btnHover); }
+      button:disabled { opacity: .5; cursor: not-allowed; }
+      .meta {
+        font-size: 12px;
+        color: var(--muted);
+        margin: 8px 0 10px;
+      }
+      .list {
+        display: grid;
+        gap: 10px;
+      }
+      .card {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        overflow: hidden;
+        display: grid;
+        grid-template-columns: 150px 1fr;
+        gap: 10px;
+      }
+      .thumb {
+        width: 150px;
+        height: 84px;
+        object-fit: cover;
+        background: #000;
+      }
+      .content { padding: 10px 10px 10px 0; }
+      .h {
+        font-size: 13px;
+        font-weight: 650;
+        line-height: 1.35;
+        margin: 0 0 6px;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+      }
+      .sub {
+        font-size: 12px;
+        color: var(--muted);
+        margin: 0 0 8px;
+      }
+      .chips { display: flex; gap: 6px; flex-wrap: wrap; }
+      .chip {
+        font-size: 11px;
+        padding: 3px 8px;
+        border-radius: 999px;
+        border: 1px solid var(--border);
+        background: var(--chip);
+        color: rgba(255,255,255,.85);
+        max-width: 180px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .pager {
+        display: flex;
+        gap: 8px;
+        justify-content: flex-end;
+        margin-top: 12px;
+      }
+      .status {
+        font-size: 12px;
+        color: var(--muted);
+        margin-top: 10px;
+        min-height: 16px;
+      }
+      a.inline {
+        color: #9fd3ff;
+        text-decoration: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="top">
+        <div class="title" id="channelTitle">YouTube Finder</div>
+        <div class="controls">
+          <input id="q" type="search" placeholder="輸入關鍵字（title/desc/tags）" />
           <button id="btnSearch">搜尋</button>
-          <button id="btnLatest">最新</button>
+          <button id="btnLatest">新歌</button>
+          <button id="btnReset">清單</button>
         </div>
+      </div>
 
-        <div class="row" style="margin-top:10px;">
-          <button id="btnPrev" ${state.hasPrev ? "" : "disabled"}>上一頁</button>
-          <button id="btnNext" ${state.hasNext ? "" : "disabled"}>下一頁</button>
-          <span class="badge">第 ${p} / ${pc} 頁</span>
-          <span class="badge">${escapeHtml(totalText)}</span>
-        </div>
+      <div class="meta" id="meta"></div>
+      <div class="list" id="list"></div>
 
-        <div class="hint">
-          <span class="badge">每頁 ${state.pageSize} 筆</span>
-          <span class="badge">點卡片看詳情</span>
-          ${showEffective ? `<span class="badge">實際搜尋：${escapeHtml(state.effectiveQuery)}</span>` : ""}
-          ${channel}
-        </div>
+      <div class="pager">
+        <button id="btnPrev" disabled>上一頁</button>
+        <button id="btnNext" disabled>下一頁</button>
+      </div>
 
-        ${state.status ? `<div class="hint ${state.status.includes("失敗") ? "err" : ""}">⏳ ${escapeHtml(state.status)}</div>` : ""}
+      <div class="status" id="status"></div>
+    </div>
 
-        <div class="grid">
-          ${(state.videos || []).map(v => `
-            <div class="card" data-id="${escapeHtml(v.videoId)}">
-              <img class="thumb" loading="lazy" src="${escapeHtml(v.thumbnailUrl || "")}" alt="" />
-              <div class="meta">
-                <div class="title">${escapeHtml(v.title || "")}</div>
-                <div class="sub">${escapeHtml((v.publishedAt || "").slice(0,10) || "")}</div>
+    <script>
+      const host = window.openai;
+
+      const els = {
+        channelTitle: document.getElementById("channelTitle"),
+        meta: document.getElementById("meta"),
+        list: document.getElementById("list"),
+        status: document.getElementById("status"),
+        q: document.getElementById("q"),
+        btnSearch: document.getElementById("btnSearch"),
+        btnLatest: document.getElementById("btnLatest"),
+        btnReset: document.getElementById("btnReset"),
+        btnPrev: document.getElementById("btnPrev"),
+        btnNext: document.getElementById("btnNext"),
+      };
+
+      let state = {
+        mode: "list_videos",
+        q: "",
+        cursor: 0,
+        pageSize: 3,
+        nextCursor: null,
+        total: null,
+        totalMatches: null,
+        items: []
+      };
+
+      function setStatus(t) {
+        els.status.textContent = t || "";
+      }
+
+      function escapeHtml(s) {
+        return (s || "").replace(/[&<>"']/g, c => ({
+          "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;"
+        }[c]));
+      }
+
+      function fmtDate(iso) {
+        if (!iso) return "";
+        try {
+          const d = new Date(iso);
+          return d.toISOString().slice(0, 10);
+        } catch { return ""; }
+      }
+
+      function render(payload) {
+        if (!payload) return;
+
+        const channelTitle = payload.channelTitle || "YouTube Finder";
+        els.channelTitle.textContent = channelTitle;
+
+        // normalize payload
+        const mode = payload.mode || state.mode;
+        const cursor = Number(payload.cursor ?? state.cursor ?? 0);
+        const nextCursor = payload.nextCursor ?? null;
+        const pageSize = Number(payload.pageSize ?? state.pageSize ?? 3);
+
+        const items = payload.items || (payload.item ? [payload.item] : []);
+        const total = payload.total ?? null;
+        const totalMatches = payload.totalMatches ?? null;
+        const q = payload.q ?? state.q ?? "";
+
+        state = { ...state, mode, cursor, nextCursor, pageSize, total, totalMatches, q, items };
+
+        // meta line
+        let meta = "";
+        if (mode === "search_videos") {
+          meta = `搜尋：<b>${escapeHtml(q)}</b>　結果：${totalMatches ?? 0}`;
+        } else if (mode === "latest_song") {
+          meta = "最新一首";
+        } else {
+          meta = `影片總數：${total ?? "?"}`;
+        }
+        els.meta.innerHTML = meta;
+
+        // pager
+        els.btnPrev.disabled = cursor <= 0;
+        els.btnNext.disabled = nextCursor == null;
+
+        // list
+        if (!items.length) {
+          els.list.innerHTML = `<div class="meta">（沒有資料）</div>`;
+          return;
+        }
+
+        els.list.innerHTML = items.map(v => {
+          const thumb = v.thumbnailUrl || (v.videoId ? `https://i.ytimg.com/vi/${v.videoId}/hqdefault.jpg` : "");
+          const tags = Array.isArray(v.tags) ? v.tags.slice(0, 8) : [];
+          const date = fmtDate(v.publishedAt);
+
+          return `
+            <div class="card">
+              <img class="thumb" src="${escapeHtml(thumb)}" alt="" referrerpolicy="no-referrer" />
+              <div class="content">
+                <div class="h">${escapeHtml(v.title || "")}</div>
+                <div class="sub">上架：${escapeHtml(date)}　｜　
+                  <a class="inline" href="#" data-url="${escapeHtml(v.url || "")}">打開 YouTube</a>
+                </div>
+                <div class="chips">
+                  ${tags.map(t => `<span class="chip">${escapeHtml(t)}</span>`).join("")}
+                </div>
               </div>
             </div>
-          `).join("")}
-        </div>
-      `.trim();
+          `;
+        }).join("");
 
-      ROOT.querySelector("#btnLatest")?.addEventListener("click", () => {
-        state.mode = "LIST";
-        state.page = 1;
-        state.snapshot = "";
-        state.effectiveQuery = "";
-        persistWidgetState();
-        loadListPage();
-      });
+        // bind openExternal
+        els.list.querySelectorAll("a[data-url]").forEach(a => {
+          a.addEventListener("click", async (e) => {
+            e.preventDefault();
+            const url = a.getAttribute("data-url");
+            if (!url) return;
+            try {
+              if (host?.openExternal) await host.openExternal(url);
+              else window.open(url, "_blank");
+            } catch (err) {
+              setStatus("打開連結失敗：" + (err?.message || String(err)));
+            }
+          });
+        });
+      }
 
-      ROOT.querySelector("#btnSearch")?.addEventListener("click", () => {
-        const q = ROOT.querySelector("#q")?.value?.trim();
+      async function callTool(name, args) {
+        if (!host?.callTool) throw new Error("window.openai.callTool 不存在（請確認 widget 以 skybridge 載入）");
+        setStatus(`呼叫工具：${name} ...`);
+        const out = await host.callTool(name, args || {});
+        // callTool 回傳格式可能係 { structuredContent, content } 或直接 structuredContent
+        const payload = out?.structuredContent || out;
+        render(payload);
+        setStatus("");
+      }
+
+      // Buttons
+      els.btnSearch.addEventListener("click", async () => {
+        const q = els.q.value.trim();
         if (!q) return;
-        state.mode = "SEARCH";
-        state.page = 1;
-        state.query = q;
-        state.snapshot = "";
-        state.effectiveQuery = "";
-        persistWidgetState();
-        loadSearchPage();
+        try {
+          await callTool("search_videos", { q, cursor: 0, pageSize: state.pageSize });
+        } catch (e) { setStatus(e?.message || String(e)); }
       });
 
-      ROOT.querySelector("#q")?.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") ROOT.querySelector("#btnSearch")?.click();
+      els.q.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") els.btnSearch.click();
       });
 
-      ROOT.querySelector("#btnPrev")?.addEventListener("click", () => {
-        if (!state.hasPrev) return;
-        state.page = Math.max(1, state.page - 1);
-        persistWidgetState();
-        if (state.mode === "SEARCH") loadSearchPage();
-        else loadListPage();
+      els.btnLatest.addEventListener("click", async () => {
+        try {
+          await callTool("latest_song", {});
+        } catch (e) { setStatus(e?.message || String(e)); }
       });
 
-      ROOT.querySelector("#btnNext")?.addEventListener("click", () => {
-        if (!state.hasNext) return;
-        state.page = state.page + 1;
-        persistWidgetState();
-        if (state.mode === "SEARCH") loadSearchPage();
-        else loadListPage();
+      els.btnReset.addEventListener("click", async () => {
+        try {
+          await callTool("list_videos", { cursor: 0, pageSize: state.pageSize, sort: "newest" });
+        } catch (e) { setStatus(e?.message || String(e)); }
       });
 
-      ROOT.querySelectorAll(".card").forEach(card => {
-        card.addEventListener("click", () => openDetail(card.getAttribute("data-id")));
+      els.btnPrev.addEventListener("click", async () => {
+        const prev = Math.max(0, (state.cursor || 0) - (state.pageSize || 3));
+        try {
+          if (state.mode === "search_videos") {
+            await callTool("search_videos", { q: state.q, cursor: prev, pageSize: state.pageSize });
+          } else {
+            await callTool("list_videos", { cursor: prev, pageSize: state.pageSize, sort: "newest" });
+          }
+        } catch (e) { setStatus(e?.message || String(e)); }
       });
-    }
 
-    function renderDetail() {
-      const v = (state.videos || []).find(x => x.videoId === state.selectedId);
-      if (!v) { backToList(); return; }
+      els.btnNext.addEventListener("click", async () => {
+        if (state.nextCursor == null) return;
+        try {
+          if (state.mode === "search_videos") {
+            await callTool("search_videos", { q: state.q, cursor: state.nextCursor, pageSize: state.pageSize });
+          } else {
+            await callTool("list_videos", { cursor: state.nextCursor, pageSize: state.pageSize, sort: "newest" });
+          }
+        } catch (e) { setStatus(e?.message || String(e)); }
+      });
 
-      ROOT.innerHTML = `
-        <div class="detail">
-          <div class="row">
-            <button id="btnBack">← 返回</button>
-            <span class="badge">${escapeHtml(v.videoId)}</span>
-          </div>
+      // 初次渲染：先嘗試讀 host.toolOutput（如果係由對話工具觸發，通常會有）
+      function initFromHostOutput() {
+        try {
+          const out = host?.toolOutput;
+          const payload = out?.structuredContent || out;
+          if (payload && (payload.items || payload.item)) {
+            render(payload);
+            return true;
+          }
+        } catch {}
+        return false;
+      }
 
-          <img class="thumb" src="${escapeHtml(v.thumbnailUrl || "")}" alt="" />
+      // 兼容：如果 host toolOutput 後續才更新，用輕量輪詢更新一次
+      let lastSig = "";
+      setInterval(() => {
+        try {
+          const out = host?.toolOutput;
+          const sig = JSON.stringify(out || null);
+          if (sig && sig !== lastSig) {
+            lastSig = sig;
+            const payload = out?.structuredContent || out;
+            if (payload && (payload.items || payload.item)) render(payload);
+          }
+        } catch {}
+      }, 600);
 
-          <div class="title">${escapeHtml(v.title || "")}</div>
-          <div class="sub">${escapeHtml((v.channelTitle || state.channelTitle || "") + " " + (v.publishedAt || "").slice(0,10))}</div>
-
-          <div class="actions">
-            <button id="btnYT">在 YouTube 打開</button>
-            <button id="btnShort">用 youtu.be 打開</button>
-          </div>
-
-          ${state.status ? `<div class="hint ${state.status.includes("失敗") ? "err" : ""}">⏳ ${escapeHtml(state.status)}</div>` : ""}
-        </div>
-      `.trim();
-
-      ROOT.querySelector("#btnBack")?.addEventListener("click", backToList);
-      ROOT.querySelector("#btnYT")?.addEventListener("click", () => openExternal(`https://www.youtube.com/watch?v=${v.videoId}`));
-      ROOT.querySelector("#btnShort")?.addEventListener("click", () => openExternal(`https://youtu.be/${v.videoId}`));
-    }
-
-    function render() {
-      if (state.view === "detail") renderDetail();
-      else renderList();
-    }
-
-    window.addEventListener(SET_GLOBALS_EVENT, () => { render(); }, { passive: true });
-
-    render();
-
-    if (!state.videos?.length) {
-      if (state.mode === "SEARCH" && (state.query || "").trim()) loadSearchPage();
-      else loadListPage();
-    }
-  </script>
-</body>
+      (async function boot() {
+        const ok = initFromHostOutput();
+        if (!ok) {
+          try {
+            await callTool("list_videos", { cursor: 0, pageSize: state.pageSize, sort: "newest" });
+          } catch (e) {
+            setStatus(e?.message || String(e));
+          }
+        }
+      })();
+    </script>
+  </body>
 </html>
