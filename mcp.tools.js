@@ -1,6 +1,23 @@
-// mcp.tools.js — outputTemplate + structuredContent (方案 1)
+// mcp.tools.js — 方案1：outputTemplate + structuredContent（支援 widget + 縮圖）
 
 import { WIDGET_URI } from "./mcp.resources.js";
+
+function toolMeta() {
+  return {
+    "openai/outputTemplate": WIDGET_URI,
+    "openai/widgetAccessible": true,
+    "openai/visibility": "public",
+    "openai/toolInvocation/invoking": "處理中…",
+    "openai/toolInvocation/invoked": "完成"
+  };
+}
+
+function fallbackThumb(videoId, thumbnailUrl) {
+  return (
+    thumbnailUrl ||
+    (videoId ? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg` : "")
+  );
+}
 
 function norm(s) {
   return (s || "").toString().toLowerCase().trim();
@@ -28,6 +45,7 @@ async function fetchIndex(env) {
   const url = `${base.replace(/\/+$/, "")}/my-channel/videos`;
   const res = await fetch(url, { headers: { Accept: "application/json" } });
   const text = await res.text();
+
   if (!res.ok) throw new Error(`Index fetch failed: ${res.status} ${text.slice(0, 200)}`);
 
   let data;
@@ -38,19 +56,17 @@ async function fetchIndex(env) {
   }
 
   const videos = Array.isArray(data?.videos) ? data.videos : [];
-  return { ...data, videos };
+  // 保底：就算 Worker 仲未有 thumbnailUrl，仍然給 widget 顯示 fallback
+  const normalized = videos.map(v => ({
+    ...v,
+    tags: Array.isArray(v.tags) ? v.tags : [],
+    description: v.description ?? "",
+    thumbnailUrl: fallbackThumb(v.videoId, v.thumbnailUrl)
+  }));
+
+  return { ...data, videos: normalized };
 }
 
-function toolMeta() {
-  return {
-    // ✅ 關鍵：令 ChatGPT 自動顯示 widget
-    "openai/outputTemplate": WIDGET_URI,
-    // ✅ 令模型可以用
-    "openai/visibility": "public"
-  };
-}
-
-// JSON Schema helper
 const intSchema = (min, max, def) => ({
   type: "integer",
   minimum: min,
@@ -59,13 +75,18 @@ const intSchema = (min, max, def) => ({
 });
 
 export function registerTools(mcp, env) {
-  // 1) 最新一首（新歌）
+  // 最新一首
   mcp.registerTool(
     "latest_song",
     {
       title: "最新歌",
-      description: "取得頻道最新上架的一首影片（含縮圖、描述、tags）。",
-      inputSchema: { type: "object", properties: {} },
+      description: "取得頻道最新上架的一首影片（含縮圖/描述/tags）。",
+      inputSchema: {
+        type: "object",
+        properties: {},
+        additionalProperties: false
+      },
+      annotations: { readOnlyHint: true },
       _meta: toolMeta()
     },
     async () => {
@@ -88,7 +109,7 @@ export function registerTools(mcp, env) {
           {
             type: "text",
             text: item
-              ? `最新一首：${item.title}\nYouTube: ${item.url}`
+              ? `最新一首：${item.title}\n上架：${item.publishedAt?.slice(0, 10) || ""}\nYouTube: ${item.url}`
               : "找不到影片（index 為空）"
           }
         ]
@@ -96,7 +117,7 @@ export function registerTools(mcp, env) {
     }
   );
 
-  // 2) 列表（分頁）
+  // 列表（分頁）
   mcp.registerTool(
     "list_videos",
     {
@@ -108,8 +129,10 @@ export function registerTools(mcp, env) {
           cursor: intSchema(0, undefined, 0),
           pageSize: intSchema(1, 20, 3),
           sort: { type: "string", enum: ["newest", "oldest"], default: "newest" }
-        }
+        },
+        additionalProperties: false
       },
+      annotations: { readOnlyHint: true },
       _meta: toolMeta()
     },
     async ({ cursor = 0, pageSize = 3, sort = "newest" } = {}) => {
@@ -134,17 +157,12 @@ export function registerTools(mcp, env) {
           pageSize,
           items
         },
-        content: [
-          {
-            type: "text",
-            text: `列出影片：${items.length} / ${list.length}（cursor=${cursor}）`
-          }
-        ]
+        content: [{ type: "text", text: `列出影片：${items.length} / ${list.length}` }]
       };
     }
   );
 
-  // 3) 搜尋（title/description/tags）
+  // 搜尋
   mcp.registerTool(
     "search_videos",
     {
@@ -157,8 +175,10 @@ export function registerTools(mcp, env) {
           cursor: intSchema(0, undefined, 0),
           pageSize: intSchema(1, 20, 3)
         },
-        required: ["q"]
+        required: ["q"],
+        additionalProperties: false
       },
+      annotations: { readOnlyHint: true },
       _meta: toolMeta()
     },
     async ({ q, cursor = 0, pageSize = 3 } = {}) => {
@@ -184,12 +204,7 @@ export function registerTools(mcp, env) {
           pageSize,
           items
         },
-        content: [
-          {
-            type: "text",
-            text: `搜尋「${q}」：${items.length} / ${matches.length}（cursor=${cursor}）`
-          }
-        ]
+        content: [{ type: "text", text: `搜尋「${q}」：${items.length} / ${matches.length}` }]
       };
     }
   );
