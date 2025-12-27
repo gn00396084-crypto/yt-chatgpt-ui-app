@@ -1,6 +1,3 @@
-// index.js — MCP server (stateful session map; Apps SDK friendly)
-// Env required: CF_WORKER_BASE_URL = https://xxx.workers.dev (or your worker origin)
-
 import { createServer } from "node:http";
 import { randomUUID } from "node:crypto";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -17,9 +14,7 @@ if (!CF_WORKER_BASE_URL) {
 }
 
 const MCP_PATH = "/mcp";
-
-// sessionId -> { transport, mcp }
-const sessions = new Map();
+const sessions = new Map(); // sessionId -> { transport, mcp }
 
 function createMcp() {
   const mcp = new McpServer({ name: "yt-finder", version: "1.0.0" });
@@ -29,42 +24,35 @@ function createMcp() {
 
 function setCors(res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
-  // IMPORTANT: allow mcp-session-id for Apps SDK
+  res.setHeader("Access-Control-Allow-Methods", "GET,POST,DELETE,OPTIONS");
   res.setHeader(
     "Access-Control-Allow-Headers",
-    "content-type, authorization, mcp-session-id"
+    "content-type,authorization,mcp-session-id"
   );
-  res.setHeader("Access-Control-Allow-Methods", "GET,POST,DELETE,OPTIONS");
   res.setHeader("Access-Control-Expose-Headers", "Mcp-Session-Id");
 }
 
 async function readJson(req) {
   return new Promise((resolve, reject) => {
     let data = "";
-    req.on("data", (chunk) => (data += chunk));
+    req.on("data", c => (data += c));
     req.on("end", () => {
       if (!data) return resolve(null);
-      try {
-        resolve(JSON.parse(data));
-      } catch (e) {
-        reject(e);
-      }
+      try { resolve(JSON.parse(data)); } catch (e) { reject(e); }
     });
     req.on("error", reject);
   });
 }
 
-// Fallback if isInitializeRequest() behavior changes across sdk versions
 function looksLikeInitialize(body) {
   if (!body) return false;
-  if (Array.isArray(body)) return body.some((m) => m?.method === "initialize");
+  if (Array.isArray(body)) return body.some(m => m?.method === "initialize");
   return body?.method === "initialize";
 }
 
 const server = createServer(async (req, res) => {
   const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
 
-  // health
   if (req.method === "GET" && url.pathname === "/") {
     res.writeHead(200, { "content-type": "text/plain; charset=utf-8" }).end("OK");
     return;
@@ -75,14 +63,12 @@ const server = createServer(async (req, res) => {
     return;
   }
 
-  // CORS preflight
   if (req.method === "OPTIONS") {
     setCors(res);
     res.writeHead(204).end();
     return;
   }
 
-  // Always set CORS on MCP routes
   setCors(res);
 
   try {
@@ -92,50 +78,34 @@ const server = createServer(async (req, res) => {
     if (method === "POST") {
       const body = await readJson(req).catch(() => null);
 
-      // Existing session
+      // existing session
       if (sessionId && sessions.has(sessionId)) {
         const { transport } = sessions.get(sessionId);
         await transport.handleRequest(req, res, body);
         return;
       }
 
-      // New session must be initialize
+      // new session must initialize
       const initOk = (() => {
-        try {
-          return body && isInitializeRequest(body);
-        } catch {
-          return looksLikeInitialize(body);
-        }
+        try { return body && isInitializeRequest(body); }
+        catch { return looksLikeInitialize(body); }
       })();
 
       if (!initOk) {
         res.writeHead(400, { "content-type": "application/json; charset=utf-8" });
-        res.end(
-          JSON.stringify(
-            {
-              jsonrpc: "2.0",
-              error: {
-                code: -32000,
-                message: "Bad Request: No valid session ID provided (expected initialize).",
-              },
-              id: null,
-            },
-            null,
-            2
-          )
-        );
+        res.end(JSON.stringify({
+          jsonrpc: "2.0",
+          error: { code: -32000, message: "Bad Request: expected initialize or valid session." },
+          id: null
+        }, null, 2));
         return;
       }
 
-      // Create stateful transport + server
       const mcp = createMcp();
-
       const transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: () => randomUUID(),
         enableJsonResponse: true,
-        onsessioninitialized: (sid) => {
-          sessions.set(sid, { transport, mcp });
-        },
+        onsessioninitialized: (sid) => sessions.set(sid, { transport, mcp })
       });
 
       transport.onclose = () => {
@@ -143,9 +113,7 @@ const server = createServer(async (req, res) => {
         if (sid && sessions.has(sid)) {
           const s = sessions.get(sid);
           sessions.delete(sid);
-          try {
-            s?.mcp?.close();
-          } catch {}
+          try { s?.mcp?.close(); } catch {}
         }
       };
 
@@ -154,7 +122,7 @@ const server = createServer(async (req, res) => {
       return;
     }
 
-    // GET/DELETE should have session id
+    // GET/DELETE need session
     if (method === "GET" || method === "DELETE") {
       if (!sessionId || !sessions.has(sessionId)) {
         res.writeHead(400, { "content-type": "text/plain; charset=utf-8" });
