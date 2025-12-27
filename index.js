@@ -1,9 +1,11 @@
-// index.js — MCP server (single-widget architecture)
-// Env required: CF_WORKER_BASE_URL = https://xxx.workers.dev
+// index.js — MCP server (stateful session map; Apps SDK friendly)
+// Env required: CF_WORKER_BASE_URL = https://xxx.workers.dev (or your worker origin)
 
 import { createServer } from "node:http";
+import { randomUUID } from "node:crypto";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 import { registerAll } from "./mcp.register.js";
 
 const PORT = Number(process.env.PORT || 3000);
@@ -14,14 +16,50 @@ if (!CF_WORKER_BASE_URL) {
   process.exit(1);
 }
 
+const MCP_PATH = "/mcp";
+
+// sessionId -> { transport, mcp }
+const sessions = new Map();
+
 function createMcp() {
   const mcp = new McpServer({ name: "yt-finder", version: "1.0.0" });
   registerAll(mcp, { CF_WORKER_BASE_URL });
   return mcp;
 }
 
-const MCP_PATH = "/mcp";
-const MCP_METHODS = new Set(["POST", "GET", "DELETE"]);
+function setCors(res) {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  // IMPORTANT: allow mcp-session-id for Apps SDK
+  res.setHeader(
+    "Access-Control-Allow-Headers",
+    "content-type, authorization, mcp-session-id"
+  );
+  res.setHeader("Access-Control-Allow-Methods", "GET,POST,DELETE,OPTIONS");
+  res.setHeader("Access-Control-Expose-Headers", "Mcp-Session-Id");
+}
+
+async function readJson(req) {
+  return new Promise((resolve, reject) => {
+    let data = "";
+    req.on("data", (chunk) => (data += chunk));
+    req.on("end", () => {
+      if (!data) return resolve(null);
+      try {
+        resolve(JSON.parse(data));
+      } catch (e) {
+        reject(e);
+      }
+    });
+    req.on("error", reject);
+  });
+}
+
+// Fallback if isInitializeRequest() behavior changes across sdk versions
+function looksLikeInitialize(body) {
+  if (!body) return false;
+  if (Array.isArray(body)) return body.some((m) => m?.method === "initialize");
+  return body?.method === "initialize";
+}
 
 const server = createServer(async (req, res) => {
   const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
@@ -32,46 +70,110 @@ const server = createServer(async (req, res) => {
     return;
   }
 
-  // CORS preflight for MCP
-  if (req.method === "OPTIONS" && url.pathname.startsWith(MCP_PATH)) {
-    res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Access-Control-Allow-Methods", "GET,POST,DELETE,OPTIONS");
-    res.setHeader("Access-Control-Allow-Headers", "content-type,authorization");
-    res.setHeader("Access-Control-Expose-Headers", "Mcp-Session-Id");
+  if (url.pathname !== MCP_PATH) {
+    res.writeHead(404, { "content-type": "text/plain; charset=utf-8" }).end("Not Found");
+    return;
+  }
+
+  // CORS preflight
+  if (req.method === "OPTIONS") {
+    setCors(res);
     res.writeHead(204).end();
     return;
   }
 
-  // MCP endpoint
-  if (url.pathname.startsWith(MCP_PATH) && req.method && MCP_METHODS.has(req.method)) {
-    res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Access-Control-Expose-Headers", "Mcp-Session-Id");
+  // Always set CORS on MCP routes
+  setCors(res);
 
-    const mcp = createMcp();
-    const transport = new StreamableHTTPServerTransport({
-      sessionIdGenerator: undefined,
-      enableJsonResponse: true
-    });
+  try {
+    const method = req.method || "GET";
+    const sessionId = req.headers["mcp-session-id"];
 
-    res.on("close", () => {
-      transport.close();
-      mcp.close();
-    });
+    if (method === "POST") {
+      const body = await readJson(req).catch(() => null);
 
-    try {
+      // Existing session
+      if (sessionId && sessions.has(sessionId)) {
+        const { transport } = sessions.get(sessionId);
+        await transport.handleRequest(req, res, body);
+        return;
+      }
+
+      // New session must be initialize
+      const initOk = (() => {
+        try {
+          return body && isInitializeRequest(body);
+        } catch {
+          return looksLikeInitialize(body);
+        }
+      })();
+
+      if (!initOk) {
+        res.writeHead(400, { "content-type": "application/json; charset=utf-8" });
+        res.end(
+          JSON.stringify(
+            {
+              jsonrpc: "2.0",
+              error: {
+                code: -32000,
+                message: "Bad Request: No valid session ID provided (expected initialize).",
+              },
+              id: null,
+            },
+            null,
+            2
+          )
+        );
+        return;
+      }
+
+      // Create stateful transport + server
+      const mcp = createMcp();
+
+      const transport = new StreamableHTTPServerTransport({
+        sessionIdGenerator: () => randomUUID(),
+        enableJsonResponse: true,
+        onsessioninitialized: (sid) => {
+          sessions.set(sid, { transport, mcp });
+        },
+      });
+
+      transport.onclose = () => {
+        const sid = transport.sessionId;
+        if (sid && sessions.has(sid)) {
+          const s = sessions.get(sid);
+          sessions.delete(sid);
+          try {
+            s?.mcp?.close();
+          } catch {}
+        }
+      };
+
       await mcp.connect(transport);
-      await transport.handleRequest(req, res);
-    } catch (err) {
-      console.error("Error handling MCP request:", err);
-      if (!res.headersSent) res.writeHead(500).end("Internal server error");
+      await transport.handleRequest(req, res, body);
+      return;
     }
-    return;
-  }
 
-  res.writeHead(404, { "content-type": "text/plain; charset=utf-8" }).end("Not Found");
+    // GET/DELETE should have session id
+    if (method === "GET" || method === "DELETE") {
+      if (!sessionId || !sessions.has(sessionId)) {
+        res.writeHead(400, { "content-type": "text/plain; charset=utf-8" });
+        res.end("Invalid or missing session ID");
+        return;
+      }
+      const { transport } = sessions.get(sessionId);
+      await transport.handleRequest(req, res);
+      return;
+    }
+
+    res.writeHead(405, { "content-type": "text/plain; charset=utf-8" }).end("Method Not Allowed");
+  } catch (err) {
+    console.error("Error handling MCP request:", err);
+    if (!res.headersSent) res.writeHead(500).end("Internal server error");
+  }
 });
 
 server.listen(PORT, () => {
   console.log(`Server listening on http://localhost:${PORT}`);
-  console.log(`MCP endpoint: /mcp`);
+  console.log(`MCP endpoint: ${MCP_PATH}`);
 });
