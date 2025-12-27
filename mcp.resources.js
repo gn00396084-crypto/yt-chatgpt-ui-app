@@ -1,4 +1,4 @@
-// mcp.resources.js — SINGLE WIDGET (no hidden-tool template binding issue)
+// mcp.resources.js — SINGLE WIDGET (Apps SDK CSP fixed)
 
 import { readFileSync } from "node:fs";
 
@@ -11,14 +11,37 @@ export const WIDGET_URI = "ui://widget/youtube-finder.html";
 /** ====== Skybridge mime ====== */
 export const SKYBRIDGE_MIME = "text/html+skybridge";
 
-/** ====== Widget CSP / Domain ====== */
-export const WIDGET_CSP = {
-  connect_domains: [],
-  resource_domains: ["https://i.ytimg.com"],
-  frame_domains: []
-};
+/** ====== Widget CSP allowlists ======
+ * connect_domains: widget 內 fetch/XHR 可連嘅 API origins（唔加就會被擋）:contentReference[oaicite:2]{index=2}
+ * resource_domains: 圖片/字體/腳本等靜態資源 origins
+ * frame_domains: 如要 iframe 才需要（唔建議，審核更嚴）:contentReference[oaicite:3]{index=3}
+ * redirect_domains: openExternal 目的地白名單（可選）
+ */
+function buildWidgetCsp() {
+  const connect = [];
+  const resource = [
+    "https://i.ytimg.com", // YouTube thumbnails
+    "https://img.youtube.com" // optional fallback
+  ];
 
-export const WIDGET_DOMAIN = "https://chatgpt.com";
+  // If your widget directly fetches your CF Worker index, whitelist it here.
+  const base = process.env.CF_WORKER_BASE_URL;
+  if (base) {
+    try {
+      connect.push(new URL(base).origin);
+    } catch {
+      // ignore invalid env
+    }
+  }
+
+  return {
+    connect_domains: connect,
+    resource_domains: resource,
+    frame_domains: [],
+    // Optional: allow openExternal to YouTube without extra safe-link friction
+    redirect_domains: ["https://www.youtube.com", "https://youtu.be"]
+  };
+}
 
 const UI_FILE = "./ui-youtube-finder.html";
 
@@ -38,11 +61,14 @@ export function registerResources(mcp) {
     description: "Browse & search YouTube videos in a single widget.",
     mimeType: SKYBRIDGE_MIME,
     _meta: {
-      "openai/widgetCSP": WIDGET_CSP,
-      "openai/widgetDomain": WIDGET_DOMAIN,
+      "openai/widgetCSP": buildWidgetCsp(),
+      // 建議：唔好硬塞 widgetDomain，讓它用預設 sandbox :contentReference[oaicite:4]{index=4}
+      // "openai/widgetDomain": "https://chatgpt.com",
       "openai/widgetType": widgetType,
       "openai/widgetId": widgetId,
-      "openai/widgetPrefersBorder": true
+      "openai/widgetPrefersBorder": true,
+      // 可選：減少模型重複講 UI 內容
+      "openai/widgetDescription": "Search and browse channel videos with titles, thumbnails, descriptions and tags."
     }
   };
 
