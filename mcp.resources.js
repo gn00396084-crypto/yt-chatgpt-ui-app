@@ -1,4 +1,4 @@
-// mcp.resources.js — SINGLE WIDGET (CSP fixed)
+// mcp.resources.js — SINGLE WIDGET
 
 import { readFileSync } from "node:fs";
 
@@ -11,6 +11,7 @@ export const WIDGET_URI = "ui://widget/youtube-finder.html";
 /** ====== Skybridge mime ====== */
 export const SKYBRIDGE_MIME = "text/html+skybridge";
 
+/** ====== Widget CSP ====== */
 function buildWidgetCsp() {
   const connect = [];
   const base = process.env.CF_WORKER_BASE_URL;
@@ -19,21 +20,21 @@ function buildWidgetCsp() {
     try {
       connect.push(new URL(base).origin);
     } catch {
-      // ignore invalid env
+      // ignore
     }
   }
 
   return {
-    // widget 內 fetch/XHR 可連的 API origins
+    // widget 內 fetch 允許（如果你 UI 只用 callTool，其實可以留空）
     connect_domains: connect,
 
-    // 縮圖域名（你已經有 i.ytimg.com，建議再加 img.youtube.com）
+    // 縮圖域名白名單
     resource_domains: ["https://i.ytimg.com", "https://img.youtube.com"],
 
     // 不用 iframe 就留空（避免審核變嚴）
     frame_domains: [],
 
-    // 可選：openExternal 去 YouTube
+    // openExternal to YouTube（可選）
     redirect_domains: ["https://www.youtube.com", "https://youtu.be"]
   };
 }
@@ -53,7 +54,7 @@ export function registerResources(mcp) {
 
   const resourceMeta = {
     title: "YouTube Finder",
-    description: "Browse & search YouTube videos in a single widget.",
+    description: "Browse & search YouTube videos with thumbnails, descriptions and tags.",
     mimeType: SKYBRIDGE_MIME,
     _meta: {
       "openai/widgetCSP": buildWidgetCsp(),
