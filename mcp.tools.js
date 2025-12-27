@@ -1,11 +1,9 @@
-// mcp.tools.js — 方案1：outputTemplate + structuredContent（支援 widget + 縮圖）
-
 import { WIDGET_URI } from "./mcp.resources.js";
 
 function toolMeta() {
   return {
     "openai/outputTemplate": WIDGET_URI,
-    "openai/widgetAccessible": true,
+    "openai/widgetAccessible": true, // 允許 widget 內 callTool
     "openai/visibility": "public",
     "openai/toolInvocation/invoking": "處理中…",
     "openai/toolInvocation/invoked": "完成"
@@ -13,10 +11,7 @@ function toolMeta() {
 }
 
 function fallbackThumb(videoId, thumbnailUrl) {
-  return (
-    thumbnailUrl ||
-    (videoId ? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg` : "")
-  );
+  return thumbnailUrl || (videoId ? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg` : "");
 }
 
 function norm(s) {
@@ -45,18 +40,13 @@ async function fetchIndex(env) {
   const url = `${base.replace(/\/+$/, "")}/my-channel/videos`;
   const res = await fetch(url, { headers: { Accept: "application/json" } });
   const text = await res.text();
-
   if (!res.ok) throw new Error(`Index fetch failed: ${res.status} ${text.slice(0, 200)}`);
 
   let data;
-  try {
-    data = JSON.parse(text);
-  } catch {
-    throw new Error(`Index returned non-JSON: ${text.slice(0, 200)}`);
-  }
+  try { data = JSON.parse(text); }
+  catch { throw new Error(`Index returned non-JSON: ${text.slice(0, 200)}`); }
 
   const videos = Array.isArray(data?.videos) ? data.videos : [];
-  // 保底：就算 Worker 仲未有 thumbnailUrl，仍然給 widget 顯示 fallback
   const normalized = videos.map(v => ({
     ...v,
     tags: Array.isArray(v.tags) ? v.tags : [],
@@ -75,17 +65,12 @@ const intSchema = (min, max, def) => ({
 });
 
 export function registerTools(mcp, env) {
-  // 最新一首
   mcp.registerTool(
     "latest_song",
     {
       title: "最新歌",
       description: "取得頻道最新上架的一首影片（含縮圖/描述/tags）。",
-      inputSchema: {
-        type: "object",
-        properties: {},
-        additionalProperties: false
-      },
+      inputSchema: { type: "object", properties: {}, additionalProperties: false },
       annotations: { readOnlyHint: true },
       _meta: toolMeta()
     },
@@ -100,16 +85,12 @@ export function registerTools(mcp, env) {
       const item = list[0] || null;
 
       return {
-        structuredContent: {
-          mode: "latest_song",
-          channelTitle: data.channelTitle,
-          item
-        },
+        structuredContent: { mode: "latest_song", channelTitle: data.channelTitle, item },
         content: [
           {
             type: "text",
             text: item
-              ? `最新一首：${item.title}\n上架：${item.publishedAt?.slice(0, 10) || ""}\nYouTube: ${item.url}`
+              ? `最新一首：${item.title}\n上架：${(item.publishedAt || "").slice(0, 10)}\nYouTube: ${item.url}`
               : "找不到影片（index 為空）"
           }
         ]
@@ -117,7 +98,6 @@ export function registerTools(mcp, env) {
     }
   );
 
-  // 列表（分頁）
   mcp.registerTool(
     "list_videos",
     {
@@ -137,7 +117,6 @@ export function registerTools(mcp, env) {
     },
     async ({ cursor = 0, pageSize = 3, sort = "newest" } = {}) => {
       const data = await fetchIndex(env);
-
       const list = data.videos.slice().sort((a, b) => {
         const ta = Date.parse(a.publishedAt || 0) || 0;
         const tb = Date.parse(b.publishedAt || 0) || 0;
@@ -162,7 +141,6 @@ export function registerTools(mcp, env) {
     }
   );
 
-  // 搜尋
   mcp.registerTool(
     "search_videos",
     {
