@@ -1,4 +1,4 @@
-// mcp.resources.js — SINGLE WIDGET (Apps SDK CSP fixed)
+// mcp.resources.js — SINGLE WIDGET (CSP fixed)
 
 import { readFileSync } from "node:fs";
 
@@ -11,21 +11,10 @@ export const WIDGET_URI = "ui://widget/youtube-finder.html";
 /** ====== Skybridge mime ====== */
 export const SKYBRIDGE_MIME = "text/html+skybridge";
 
-/** ====== Widget CSP allowlists ======
- * connect_domains: widget 內 fetch/XHR 可連嘅 API origins（唔加就會被擋）:contentReference[oaicite:2]{index=2}
- * resource_domains: 圖片/字體/腳本等靜態資源 origins
- * frame_domains: 如要 iframe 才需要（唔建議，審核更嚴）:contentReference[oaicite:3]{index=3}
- * redirect_domains: openExternal 目的地白名單（可選）
- */
 function buildWidgetCsp() {
   const connect = [];
-  const resource = [
-    "https://i.ytimg.com", // YouTube thumbnails
-    "https://img.youtube.com" // optional fallback
-  ];
-
-  // If your widget directly fetches your CF Worker index, whitelist it here.
   const base = process.env.CF_WORKER_BASE_URL;
+
   if (base) {
     try {
       connect.push(new URL(base).origin);
@@ -35,10 +24,16 @@ function buildWidgetCsp() {
   }
 
   return {
+    // widget 內 fetch/XHR 可連的 API origins
     connect_domains: connect,
-    resource_domains: resource,
+
+    // 縮圖域名（你已經有 i.ytimg.com，建議再加 img.youtube.com）
+    resource_domains: ["https://i.ytimg.com", "https://img.youtube.com"],
+
+    // 不用 iframe 就留空（避免審核變嚴）
     frame_domains: [],
-    // Optional: allow openExternal to YouTube without extra safe-link friction
+
+    // 可選：openExternal 去 YouTube
     redirect_domains: ["https://www.youtube.com", "https://youtu.be"]
   };
 }
@@ -62,13 +57,9 @@ export function registerResources(mcp) {
     mimeType: SKYBRIDGE_MIME,
     _meta: {
       "openai/widgetCSP": buildWidgetCsp(),
-      // 建議：唔好硬塞 widgetDomain，讓它用預設 sandbox :contentReference[oaicite:4]{index=4}
-      // "openai/widgetDomain": "https://chatgpt.com",
       "openai/widgetType": widgetType,
       "openai/widgetId": widgetId,
-      "openai/widgetPrefersBorder": true,
-      // 可選：減少模型重複講 UI 內容
-      "openai/widgetDescription": "Search and browse channel videos with titles, thumbnails, descriptions and tags."
+      "openai/widgetPrefersBorder": true
     }
   };
 
