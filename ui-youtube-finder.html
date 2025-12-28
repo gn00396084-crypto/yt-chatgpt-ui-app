@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>YouTube Finder UI v3</title>
+  <title>YouTube Finder UI v4</title>
   <style>
     :root{
       --bg:#fff;--text:#111827;--muted:#6b7280;--border:#e5e7eb;--soft:#f3f4f6;
@@ -11,8 +11,12 @@
     }
     body{margin:0;font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto;background:var(--bg);color:var(--text)}
     .wrap{padding:14px}
+
     .top{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-bottom:8px}
+    .titleRow{display:flex;align-items:center;gap:8px}
     .title{font-size:14px;font-weight:700;display:flex;gap:8px;align-items:center}
+    .badge{font-size:11px;padding:2px 8px;border-radius:999px;border:1px solid var(--border);color:var(--muted);background:#fff}
+
     .controls{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
     input{height:34px;padding:0 10px;border-radius:10px;border:1px solid var(--border);background:#fff;color:var(--text);outline:none;min-width:220px}
     input::placeholder{color:#9ca3af}
@@ -24,7 +28,7 @@
     .debug{font-size:11px;color:var(--muted);margin:0 0 8px}
     .meta{font-size:12px;color:var(--muted);margin:6px 0 10px}
 
-    /* ✅ 固定 16:9（YouTube 原生比例），避免變形 */
+    /* ✅ 固定 16:9 */
     .gallery{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-bottom:10px}
     .thumbBtn{border:1px solid var(--border);background:#fff;padding:0;border-radius:14px;overflow:hidden;cursor:pointer}
     .thumbBox{width:100%;aspect-ratio:16/9;background:var(--soft)}
@@ -36,27 +40,27 @@
 
     .pager{display:flex;gap:8px;justify-content:flex-end;margin-top:10px}
     .status{font-size:12px;color:var(--muted);margin-top:10px;min-height:16px}
-
-    .badge{
-      position:fixed;right:10px;top:10px;
-      font-size:11px;padding:4px 8px;border-radius:999px;
-      border:1px solid var(--border);background:#fff;color:var(--muted);
-    }
   </style>
 </head>
 
 <body>
-  <div class="badge">UI v3</div>
-
   <div class="wrap" id="root">
     <div class="top">
-      <div class="title" id="channelTitle">🎧 YouTube Finder</div>
+      <div class="titleRow">
+        <div class="title" id="channelTitle">🎧 YouTube Finder</div>
+        <span class="badge">UI v4</span>
+      </div>
+
       <div class="controls">
         <input id="q" placeholder="輸入關鍵字（title/desc/tags）" />
         <button id="btnSearch" class="primary">搜尋</button>
         <button id="btnLatest">新歌</button>
         <button id="btnReset">清單</button>
-        <button id="btnFullscreen">全螢幕</button>
+
+        <!-- ✅ 顯示模式 -->
+        <button id="btnFs">全螢幕</button>
+        <button id="btnPip">PiP</button>
+        <button id="btnInline">回Inline</button>
       </div>
     </div>
 
@@ -90,7 +94,9 @@
         btnSearch: $("btnSearch"),
         btnLatest: $("btnLatest"),
         btnReset: $("btnReset"),
-        btnFullscreen: $("btnFullscreen"),
+        btnFs: $("btnFs"),
+        btnPip: $("btnPip"),
+        btnInline: $("btnInline"),
         btnPrev: $("btnPrev"),
         btnNext: $("btnNext"),
       };
@@ -102,13 +108,15 @@
       }[c]));
       const setStatus = (t="") => { els.status.textContent = t; };
 
-      // ✅ 只用嚟避免裁切；卡片外層大小仍由 host 控制
+      const supportsDisplayMode = typeof host?.requestDisplayMode === "function";
+
       const syncHeight = () => { try { host?.notifyIntrinsicHeight?.(document.body.scrollHeight); } catch {} };
 
       const setDebug = () => {
         const dm = host?.displayMode || "unknown";
         const mh = (typeof host?.maxHeight === "number") ? `${host.maxHeight}px` : "unknown";
-        els.debug.textContent = `displayMode: ${dm} · maxHeight: ${mh} · contentHeight: ${document.body.scrollHeight}px`;
+        els.debug.textContent =
+          `displayMode: ${dm} · maxHeight: ${mh} · requestDisplayMode: ${supportsDisplayMode ? "yes" : "no"} · contentHeight: ${document.body.scrollHeight}px`;
       };
 
       const syncHeightAfterImages = async () => {
@@ -188,6 +196,32 @@
         requestAnimationFrame(() => { setDebug(); syncHeight(); });
       };
 
+      // ✅ 顯示模式按鈕
+      const requestMode = async (mode) => {
+        if (!supportsDisplayMode) {
+          setStatus("此環境沒有 requestDisplayMode（host 未開放程式切換模式）");
+          setDebug(); syncHeight();
+          return;
+        }
+        try {
+          setStatus(`請求切換模式：${mode}...`);
+          const r = await host.requestDisplayMode({ mode });   // inline / pip / fullscreen :contentReference[oaicite:2]{index=2}
+          setStatus(`切換結果：${JSON.stringify(r || { ok: true })}`);
+        } catch (e) {
+          setStatus(`切換失敗：${e?.message || String(e)}`);
+        }
+        setDebug(); syncHeight();
+      };
+
+      els.btnFs.disabled = !supportsDisplayMode;
+      els.btnPip.disabled = !supportsDisplayMode;
+      els.btnInline.disabled = !supportsDisplayMode;
+
+      els.btnFs.addEventListener("click", () => requestMode("fullscreen"));
+      els.btnPip.addEventListener("click", () => requestMode("pip"));
+      els.btnInline.addEventListener("click", () => requestMode("inline"));
+
+      // 搜尋/新歌/清單
       els.btnSearch.addEventListener("click", async () => {
         const q = els.q.value.trim();
         if (!q) return;
@@ -220,19 +254,6 @@
           if (state.mode === "search_videos") await callTool("search_videos", { q: state.q, cursor: state.nextCursor, pageSize: state.pageSize });
           else await callTool("list_videos", { cursor: state.nextCursor, pageSize: state.pageSize, sort: "newest" });
         } catch (e) { setStatus(e?.message || String(e)); setDebug(); syncHeight(); }
-      });
-
-      // ✅ 想「變大」：切 fullscreen
-      els.btnFullscreen.addEventListener("click", async () => {
-        try {
-          if (!host?.requestDisplayMode) return setStatus("host 不支援 requestDisplayMode");
-          const granted = await host.requestDisplayMode({ mode: "fullscreen" });
-          setStatus(`已切換：${granted?.mode || "fullscreen"}`);
-          setDebug();
-          syncHeight();
-        } catch (e) {
-          setStatus(e?.message || String(e));
-        }
       });
 
       window.addEventListener("resize", () => requestAnimationFrame(() => { setDebug(); syncHeight(); }));
