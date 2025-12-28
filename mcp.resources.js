@@ -1,22 +1,41 @@
+// mcp.resources.js
 import { readFileSync } from "node:fs";
 
 export const APP_ID = "io.github.gn00396084-crypto.ytfinder";
 export const WIDGET_URI = "ui://widget/youtube-finder.html";
 export const SKYBRIDGE_MIME = "text/html+skybridge";
 
-// ✅ 提交要求「唯一網域」：換成你自己控制的正式域名（origin only）
-export const WIDGET_DOMAIN = "https://ytfinder.example.com"; // <-- 改這個
+function computeWidgetDomain() {
+  // ✅ 用 env 控制，部署時設：WIDGET_DOMAIN=https://你的正式網域
+  // 只取 origin，符合「唯一網域（origin only）」要求
+  const raw = process.env.WIDGET_DOMAIN || process.env.PUBLIC_BASE_URL || "http://localhost:3000";
+  try {
+    return new URL(raw).origin;
+  } catch {
+    return "http://localhost:3000";
+  }
+}
+
+export const WIDGET_DOMAIN = computeWidgetDomain();
 
 function buildWidgetCsp() {
   const connect = [];
   const base = process.env.CF_WORKER_BASE_URL;
   if (base) {
-    try { connect.push(new URL(base).origin); } catch {}
+    try {
+      connect.push(new URL(base).origin);
+    } catch {}
   }
 
   return {
     connect_domains: connect,
-    resource_domains: ["https://i.ytimg.com", "https://img.youtube.com"],
+    // ✅ 放行常見縮圖/頭像域名
+    resource_domains: [
+      "https://i.ytimg.com",
+      "https://img.youtube.com",
+      "https://*.ytimg.com",
+      "https://yt3.ggpht.com"
+    ],
     frame_domains: [],
     redirect_domains: ["https://www.youtube.com", "https://youtu.be"]
   };
