@@ -3,13 +3,16 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>YouTube Finder</title>
+  <title>YouTube Finder UI v3</title>
   <style>
-    :root{--bg:#fff;--text:#111827;--muted:#6b7280;--border:#e5e7eb;--soft:#f3f4f6;--btn:#111827;--btnText:#fff}
-    body{margin:0;font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;background:var(--bg);color:var(--text)}
+    :root{
+      --bg:#fff;--text:#111827;--muted:#6b7280;--border:#e5e7eb;--soft:#f3f4f6;
+      --btn:#111827;--btnText:#fff;
+    }
+    body{margin:0;font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto;background:var(--bg);color:var(--text)}
     .wrap{padding:14px}
-    .top{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-bottom:10px}
-    .title{font-size:14px;font-weight:700;display:flex;align-items:center;gap:8px}
+    .top{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-bottom:8px}
+    .title{font-size:14px;font-weight:700;display:flex;gap:8px;align-items:center}
     .controls{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
     input{height:34px;padding:0 10px;border-radius:10px;border:1px solid var(--border);background:#fff;color:var(--text);outline:none;min-width:220px}
     input::placeholder{color:#9ca3af}
@@ -17,9 +20,11 @@
     button.primary{background:var(--btn);border-color:var(--btn);color:var(--btnText)}
     button:hover{filter:brightness(.97)}
     button:disabled{opacity:.5;cursor:not-allowed}
+
+    .debug{font-size:11px;color:var(--muted);margin:0 0 8px}
     .meta{font-size:12px;color:var(--muted);margin:6px 0 10px}
 
-    /* 固定容器比例，避免圖片變形 */
+    /* ✅ 固定 16:9（YouTube 原生比例），避免變形 */
     .gallery{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-bottom:10px}
     .thumbBtn{border:1px solid var(--border);background:#fff;padding:0;border-radius:14px;overflow:hidden;cursor:pointer}
     .thumbBox{width:100%;aspect-ratio:16/9;background:var(--soft)}
@@ -28,184 +33,220 @@
     .links{margin:0 0 8px 18px;padding:0}
     .links li{margin:6px 0}
     .links a{color:var(--text);text-decoration:underline;text-underline-offset:3px}
+
     .pager{display:flex;gap:8px;justify-content:flex-end;margin-top:10px}
     .status{font-size:12px;color:var(--muted);margin-top:10px;min-height:16px}
+
+    .badge{
+      position:fixed;right:10px;top:10px;
+      font-size:11px;padding:4px 8px;border-radius:999px;
+      border:1px solid var(--border);background:#fff;color:var(--muted);
+    }
   </style>
 </head>
+
 <body>
-<div class="wrap" id="root">
-  <div class="top">
-    <div class="title" id="channelTitle">🎧 YouTube Finder</div>
-    <div class="controls">
-      <input id="q" placeholder="輸入關鍵字（title/desc/tags）" />
-      <button id="btnSearch" class="primary">搜尋</button>
-      <button id="btnLatest">新歌</button>
-      <button id="btnReset">清單</button>
+  <div class="badge">UI v3</div>
+
+  <div class="wrap" id="root">
+    <div class="top">
+      <div class="title" id="channelTitle">🎧 YouTube Finder</div>
+      <div class="controls">
+        <input id="q" placeholder="輸入關鍵字（title/desc/tags）" />
+        <button id="btnSearch" class="primary">搜尋</button>
+        <button id="btnLatest">新歌</button>
+        <button id="btnReset">清單</button>
+        <button id="btnFullscreen">全螢幕</button>
+      </div>
     </div>
+
+    <div class="debug" id="debug"></div>
+    <div class="meta" id="meta"></div>
+
+    <div class="gallery" id="gallery"></div>
+    <ul class="links" id="links"></ul>
+
+    <div class="pager">
+      <button id="btnPrev" disabled>上一頁</button>
+      <button id="btnNext" disabled>下一頁</button>
+    </div>
+
+    <div class="status" id="status"></div>
   </div>
 
-  <div class="meta" id="meta"></div>
-  <div class="gallery" id="gallery"></div>
-  <ul class="links" id="links"></ul>
+  <script>
+    (() => {
+      const host = window.openai;
+      const $ = (id) => document.getElementById(id);
 
-  <div class="pager">
-    <button id="btnPrev" disabled>上一頁</button>
-    <button id="btnNext" disabled>下一頁</button>
-  </div>
+      const els = {
+        channelTitle: $("channelTitle"),
+        debug: $("debug"),
+        meta: $("meta"),
+        gallery: $("gallery"),
+        links: $("links"),
+        status: $("status"),
+        q: $("q"),
+        btnSearch: $("btnSearch"),
+        btnLatest: $("btnLatest"),
+        btnReset: $("btnReset"),
+        btnFullscreen: $("btnFullscreen"),
+        btnPrev: $("btnPrev"),
+        btnNext: $("btnNext"),
+      };
 
-  <div class="status" id="status"></div>
-</div>
+      let state = { mode:"list_videos", q:"", cursor:0, pageSize:3, nextCursor:null, total:null, totalMatches:null, items:[] };
 
-<script>
-(() => {
-  const host = window.openai;
-  const $ = (id) => document.getElementById(id);
+      const esc = (s="") => String(s).replace(/[&<>"']/g, c => ({
+        "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"
+      }[c]));
+      const setStatus = (t="") => { els.status.textContent = t; };
 
-  const els = {
-    channelTitle: $("channelTitle"),
-    meta: $("meta"),
-    gallery: $("gallery"),
-    links: $("links"),
-    status: $("status"),
-    q: $("q"),
-    btnSearch: $("btnSearch"),
-    btnLatest: $("btnLatest"),
-    btnReset: $("btnReset"),
-    btnPrev: $("btnPrev"),
-    btnNext: $("btnNext"),
-  };
+      // ✅ 只用嚟避免裁切；卡片外層大小仍由 host 控制
+      const syncHeight = () => { try { host?.notifyIntrinsicHeight?.(document.body.scrollHeight); } catch {} };
 
-  let state = { mode:"list_videos", q:"", cursor:0, pageSize:3, nextCursor:null, total:null, totalMatches:null, items:[] };
+      const setDebug = () => {
+        const dm = host?.displayMode || "unknown";
+        const mh = (typeof host?.maxHeight === "number") ? `${host.maxHeight}px` : "unknown";
+        els.debug.textContent = `displayMode: ${dm} · maxHeight: ${mh} · contentHeight: ${document.body.scrollHeight}px`;
+      };
 
-  const esc = (s="") => String(s).replace(/[&<>"']/g, c => ({
-    "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"
-  }[c]));
-  const setStatus = (t="") => { els.status.textContent = t; };
+      const syncHeightAfterImages = async () => {
+        try {
+          const imgs = [...els.gallery.querySelectorAll("img")];
+          await Promise.allSettled(imgs.map(img =>
+            img.decode?.().catch(()=>{}) || new Promise(r => (img.onload = img.onerror = r))
+          ));
+        } catch {}
+        requestAnimationFrame(() => { setDebug(); syncHeight(); });
+      };
 
-  // ✅ 不做內捲動：內容變動就回報高度
-  const syncHeight = () => { try { host?.notifyIntrinsicHeight?.(document.documentElement.scrollHeight); } catch {} };
-  const syncHeightAfterImages = async () => {
-    try {
-      const imgs = [...els.gallery.querySelectorAll("img")];
-      await Promise.allSettled(imgs.map(img =>
-        img.decode?.().catch(()=>{}) || new Promise(r => (img.onload = img.onerror = r))
-      ));
-    } catch {}
-    requestAnimationFrame(syncHeight);
-  };
+      const openUrl = async (url) => {
+        if (!url) return;
+        try {
+          if (host?.openExternal) await host.openExternal({ href: url });
+          else window.open(url, "_blank");
+        } catch (err) {
+          setStatus("打開連結失敗：" + (err?.message || String(err)));
+        }
+      };
 
-  const openUrl = async (url) => {
-    if (!url) return;
-    try {
-      if (host?.openExternal) await host.openExternal({ href: url }); // ✅ 正確 signature
-      else window.open(url, "_blank");
-    } catch (err) {
-      setStatus("打開連結失敗：" + (err?.message || String(err)));
-    }
-  };
+      const render = (payload) => {
+        if (!payload) return;
+        const items = payload.items || (payload.item ? [payload.item] : []);
 
-  const render = (payload) => {
-    if (!payload) return;
+        state = {
+          ...state,
+          mode: payload.mode ?? state.mode,
+          q: payload.q ?? state.q,
+          cursor: Number(payload.cursor ?? state.cursor ?? 0),
+          nextCursor: payload.nextCursor ?? null,
+          pageSize: Number(payload.pageSize ?? state.pageSize ?? 3),
+          total: payload.total ?? state.total,
+          totalMatches: payload.totalMatches ?? state.totalMatches,
+          items,
+        };
 
-    const items = payload.items || (payload.item ? [payload.item] : []);
-    state = {
-      ...state,
-      mode: payload.mode ?? state.mode,
-      q: payload.q ?? state.q,
-      cursor: Number(payload.cursor ?? state.cursor ?? 0),
-      nextCursor: payload.nextCursor ?? null,
-      pageSize: Number(payload.pageSize ?? state.pageSize ?? 3),
-      total: payload.total ?? state.total,
-      totalMatches: payload.totalMatches ?? state.totalMatches,
-      items,
-    };
+        els.channelTitle.textContent = `🎧 ${payload.channelTitle || "YouTube Finder"}`;
+        if (state.mode === "search_videos") els.meta.innerHTML = `搜尋：<b>${esc(state.q)}</b>　結果：${state.totalMatches ?? 0}`;
+        else if (state.mode === "latest_song") els.meta.textContent = "最新一首";
+        else els.meta.textContent = `影片總數：${state.total ?? "?"}`;
 
-    els.channelTitle.textContent = `🎧 ${payload.channelTitle || "YouTube Finder"}`;
-    if (state.mode === "search_videos") els.meta.innerHTML = `搜尋：<b>${esc(state.q)}</b>　結果：${state.totalMatches ?? 0}`;
-    else if (state.mode === "latest_song") els.meta.textContent = "最新一首";
-    else els.meta.textContent = `影片總數：${state.total ?? "?"}`;
+        els.btnPrev.disabled = state.cursor <= 0;
+        els.btnNext.disabled = state.nextCursor == null;
 
-    els.btnPrev.disabled = state.cursor <= 0;
-    els.btnNext.disabled = state.nextCursor == null;
+        const top = items.slice(0,2);
+        els.gallery.innerHTML = top.length ? top.map(v => `
+          <button class="thumbBtn" data-url="${esc(v.url || "")}" title="${esc(v.title || "")}">
+            <div class="thumbBox">
+              <img src="${esc(v.thumbnailUrl || "")}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" />
+            </div>
+          </button>
+        `).join("") : `<div class="meta">（沒有縮圖）</div>`;
 
-    const top = items.slice(0,2);
-    els.gallery.innerHTML = top.length ? top.map(v => `
-      <button class="thumbBtn" data-url="${esc(v.url || "")}" title="${esc(v.title || "")}">
-        <div class="thumbBox">
-          <img src="${esc(v.thumbnailUrl || "")}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" />
-        </div>
-      </button>
-    `).join("") : `<div class="meta">（沒有縮圖）</div>`;
+        els.links.innerHTML = items.length
+          ? items.map(v => `<li><a href="#" data-url="${esc(v.url || "")}">${esc(v.title || "")}</a></li>`).join("")
+          : "";
 
-    els.links.innerHTML = items.length
-      ? items.map(v => `<li><a href="#" data-url="${esc(v.url || "")}">${esc(v.title || "")}</a></li>`).join("")
-      : "";
+        els.gallery.querySelectorAll("[data-url]").forEach(el =>
+          el.addEventListener("click", (e) => { e.preventDefault(); openUrl(el.getAttribute("data-url")); })
+        );
+        els.links.querySelectorAll("[data-url]").forEach(el =>
+          el.addEventListener("click", (e) => { e.preventDefault(); openUrl(el.getAttribute("data-url")); })
+        );
 
-    els.gallery.querySelectorAll("[data-url]").forEach(el =>
-      el.addEventListener("click", (e) => { e.preventDefault(); openUrl(el.getAttribute("data-url")); })
-    );
-    els.links.querySelectorAll("[data-url]").forEach(el =>
-      el.addEventListener("click", (e) => { e.preventDefault(); openUrl(el.getAttribute("data-url")); })
-    );
+        setDebug();
+        syncHeightAfterImages();
+      };
 
-    syncHeightAfterImages();
-  };
+      const callTool = async (name, args) => {
+        if (!host?.callTool) throw new Error("window.openai.callTool 不存在（請確認 skybridge 正常）");
+        setStatus(`呼叫工具：${name}...`);
+        const out = await host.callTool(name, args || {});
+        render(out?.structuredContent || out);
+        setStatus("");
+        requestAnimationFrame(() => { setDebug(); syncHeight(); });
+      };
 
-  const callTool = async (name, args) => {
-    if (!host?.callTool) throw new Error("window.openai.callTool 不存在（請確認 skybridge 正常）");
-    setStatus(`呼叫工具：${name}...`);
-    const out = await host.callTool(name, args || {});
-    render(out?.structuredContent || out);
-    setStatus("");
-    requestAnimationFrame(syncHeight);
-  };
+      els.btnSearch.addEventListener("click", async () => {
+        const q = els.q.value.trim();
+        if (!q) return;
+        try { await callTool("search_videos", { q, cursor: 0, pageSize: state.pageSize }); }
+        catch (e) { setStatus(e?.message || String(e)); setDebug(); syncHeight(); }
+      });
+      els.q.addEventListener("keydown", (e) => { if (e.key === "Enter") els.btnSearch.click(); });
 
-  els.btnSearch.addEventListener("click", async () => {
-    const q = els.q.value.trim();
-    if (!q) return;
-    try { await callTool("search_videos", { q, cursor: 0, pageSize: state.pageSize }); }
-    catch (e) { setStatus(e?.message || String(e)); syncHeight(); }
-  });
-  els.q.addEventListener("keydown", (e) => { if (e.key === "Enter") els.btnSearch.click(); });
+      els.btnLatest.addEventListener("click", async () => {
+        try { await callTool("latest_song", {}); }
+        catch (e) { setStatus(e?.message || String(e)); setDebug(); syncHeight(); }
+      });
 
-  els.btnLatest.addEventListener("click", async () => {
-    try { await callTool("latest_song", {}); }
-    catch (e) { setStatus(e?.message || String(e)); syncHeight(); }
-  });
+      els.btnReset.addEventListener("click", async () => {
+        try { await callTool("list_videos", { cursor: 0, pageSize: state.pageSize, sort: "newest" }); }
+        catch (e) { setStatus(e?.message || String(e)); setDebug(); syncHeight(); }
+      });
 
-  els.btnReset.addEventListener("click", async () => {
-    try { await callTool("list_videos", { cursor: 0, pageSize: state.pageSize, sort: "newest" }); }
-    catch (e) { setStatus(e?.message || String(e)); syncHeight(); }
-  });
+      els.btnPrev.addEventListener("click", async () => {
+        const prev = Math.max(0, state.cursor - state.pageSize);
+        try {
+          if (state.mode === "search_videos") await callTool("search_videos", { q: state.q, cursor: prev, pageSize: state.pageSize });
+          else await callTool("list_videos", { cursor: prev, pageSize: state.pageSize, sort: "newest" });
+        } catch (e) { setStatus(e?.message || String(e)); setDebug(); syncHeight(); }
+      });
 
-  els.btnPrev.addEventListener("click", async () => {
-    const prev = Math.max(0, state.cursor - state.pageSize);
-    try {
-      if (state.mode === "search_videos") await callTool("search_videos", { q: state.q, cursor: prev, pageSize: state.pageSize });
-      else await callTool("list_videos", { cursor: prev, pageSize: state.pageSize, sort: "newest" });
-    } catch (e) { setStatus(e?.message || String(e)); syncHeight(); }
-  });
+      els.btnNext.addEventListener("click", async () => {
+        if (state.nextCursor == null) return;
+        try {
+          if (state.mode === "search_videos") await callTool("search_videos", { q: state.q, cursor: state.nextCursor, pageSize: state.pageSize });
+          else await callTool("list_videos", { cursor: state.nextCursor, pageSize: state.pageSize, sort: "newest" });
+        } catch (e) { setStatus(e?.message || String(e)); setDebug(); syncHeight(); }
+      });
 
-  els.btnNext.addEventListener("click", async () => {
-    if (state.nextCursor == null) return;
-    try {
-      if (state.mode === "search_videos") await callTool("search_videos", { q: state.q, cursor: state.nextCursor, pageSize: state.pageSize });
-      else await callTool("list_videos", { cursor: state.nextCursor, pageSize: state.pageSize, sort: "newest" });
-    } catch (e) { setStatus(e?.message || String(e)); syncHeight(); }
-  });
+      // ✅ 想「變大」：切 fullscreen
+      els.btnFullscreen.addEventListener("click", async () => {
+        try {
+          if (!host?.requestDisplayMode) return setStatus("host 不支援 requestDisplayMode");
+          const granted = await host.requestDisplayMode({ mode: "fullscreen" });
+          setStatus(`已切換：${granted?.mode || "fullscreen"}`);
+          setDebug();
+          syncHeight();
+        } catch (e) {
+          setStatus(e?.message || String(e));
+        }
+      });
 
-  window.addEventListener("resize", () => requestAnimationFrame(syncHeight));
+      window.addEventListener("resize", () => requestAnimationFrame(() => { setDebug(); syncHeight(); }));
 
-  (async () => {
-    try{
-      const out = host?.toolOutput;
-      const payload = out?.structuredContent || out;
-      if (payload && (payload.items || payload.item)) render(payload);
-      else await callTool("list_videos", { cursor:0, pageSize: state.pageSize, sort:"newest" });
-    }catch(e){ setStatus(e?.message || String(e)); }
-    requestAnimationFrame(syncHeight);
-  })();
-})();
-</script>
+      (async () => {
+        try{
+          const out = host?.toolOutput;
+          const payload = out?.structuredContent || out;
+          if (payload && (payload.items || payload.item)) render(payload);
+          else await callTool("list_videos", { cursor:0, pageSize: state.pageSize, sort:"newest" });
+        }catch(e){ setStatus(e?.message || String(e)); }
+        requestAnimationFrame(() => { setDebug(); syncHeight(); });
+      })();
+    })();
+  </script>
 </body>
 </html>
