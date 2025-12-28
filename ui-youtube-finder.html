@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>YouTube Finder UI v4</title>
+  <title>YouTube Finder UI v5</title>
   <style>
     :root{
       --bg:#fff;--text:#111827;--muted:#6b7280;--border:#e5e7eb;--soft:#f3f4f6;
@@ -11,26 +11,51 @@
     }
     body{margin:0;font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto;background:var(--bg);color:var(--text)}
     .wrap{padding:14px}
-
     .top{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-bottom:8px}
     .titleRow{display:flex;align-items:center;gap:8px}
     .title{font-size:14px;font-weight:700;display:flex;gap:8px;align-items:center}
     .badge{font-size:11px;padding:2px 8px;border-radius:999px;border:1px solid var(--border);color:var(--muted);background:#fff}
 
     .controls{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-    input{height:34px;padding:0 10px;border-radius:10px;border:1px solid var(--border);background:#fff;color:var(--text);outline:none;min-width:220px}
+    input{
+      height:34px;padding:0 10px;border-radius:10px;border:1px solid var(--border);
+      background:#fff;color:var(--text);outline:none;min-width:220px
+    }
     input::placeholder{color:#9ca3af}
-    button{height:34px;padding:0 10px;border-radius:10px;border:1px solid var(--border);background:#fff;color:var(--text);cursor:pointer}
-    button.primary{background:var(--btn);border-color:var(--btn);color:var(--btnText)}
-    button:hover{filter:brightness(.97)}
-    button:disabled{opacity:.5;cursor:not-allowed}
+
+    /* ✅ 只給「一般按鈕」用，避免影響縮圖 button */
+    .btn{
+      height:34px;
+      padding:0 10px;
+      border-radius:10px;
+      border:1px solid var(--border);
+      background:#fff;
+      color:var(--text);
+      cursor:pointer;
+    }
+    .btn.primary{background:var(--btn);border-color:var(--btn);color:var(--btnText)}
+    .btn:hover{filter:brightness(.97)}
+    .btn:disabled{opacity:.5;cursor:not-allowed}
 
     .debug{font-size:11px;color:var(--muted);margin:0 0 8px}
     .meta{font-size:12px;color:var(--muted);margin:6px 0 10px}
 
-    /* ✅ 固定 16:9 */
-    .gallery{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-bottom:10px}
-    .thumbBtn{border:1px solid var(--border);background:#fff;padding:0;border-radius:14px;overflow:hidden;cursor:pointer}
+    /* ✅ 縮圖：不再被 34px 壓扁 */
+    .gallery{
+      display:grid;
+      grid-template-columns:repeat(2,minmax(0,1fr));
+      gap:10px;
+      margin-bottom:10px;
+    }
+    .thumbBtn{
+      height:auto;              /* ✅ 關鍵：不要固定高度 */
+      border:1px solid var(--border);
+      background:#fff;
+      padding:0;
+      border-radius:14px;
+      overflow:hidden;
+      cursor:pointer;
+    }
     .thumbBox{width:100%;aspect-ratio:16/9;background:var(--soft)}
     .thumbBox img{width:100%;height:100%;object-fit:cover;display:block}
 
@@ -48,19 +73,18 @@
     <div class="top">
       <div class="titleRow">
         <div class="title" id="channelTitle">🎧 YouTube Finder</div>
-        <span class="badge">UI v4</span>
+        <span class="badge">UI v5</span>
       </div>
 
       <div class="controls">
         <input id="q" placeholder="輸入關鍵字（title/desc/tags）" />
-        <button id="btnSearch" class="primary">搜尋</button>
-        <button id="btnLatest">新歌</button>
-        <button id="btnReset">清單</button>
+        <button id="btnSearch" class="btn primary" type="button">搜尋</button>
+        <button id="btnLatest" class="btn" type="button">新歌</button>
+        <button id="btnReset" class="btn" type="button">清單</button>
 
-        <!-- ✅ 顯示模式 -->
-        <button id="btnFs">全螢幕</button>
-        <button id="btnPip">PiP</button>
-        <button id="btnInline">回Inline</button>
+        <button id="btnFs" class="btn" type="button">全螢幕</button>
+        <button id="btnPip" class="btn" type="button">PiP</button>
+        <button id="btnInline" class="btn" type="button">回Inline</button>
       </div>
     </div>
 
@@ -71,8 +95,8 @@
     <ul class="links" id="links"></ul>
 
     <div class="pager">
-      <button id="btnPrev" disabled>上一頁</button>
-      <button id="btnNext" disabled>下一頁</button>
+      <button id="btnPrev" class="btn" type="button" disabled>上一頁</button>
+      <button id="btnNext" class="btn" type="button" disabled>下一頁</button>
     </div>
 
     <div class="status" id="status"></div>
@@ -110,13 +134,17 @@
 
       const supportsDisplayMode = typeof host?.requestDisplayMode === "function";
 
+      const getDisplayMode = () => host?.displayMode || "inline";
+      const desiredPageSize = () => (getDisplayMode() === "fullscreen" ? 12 : 3);
+      const desiredThumbCount = () => (getDisplayMode() === "fullscreen" ? 6 : 2);
+
       const syncHeight = () => { try { host?.notifyIntrinsicHeight?.(document.body.scrollHeight); } catch {} };
 
       const setDebug = () => {
         const dm = host?.displayMode || "unknown";
         const mh = (typeof host?.maxHeight === "number") ? `${host.maxHeight}px` : "unknown";
         els.debug.textContent =
-          `displayMode: ${dm} · maxHeight: ${mh} · requestDisplayMode: ${supportsDisplayMode ? "yes" : "no"} · contentHeight: ${document.body.scrollHeight}px`;
+          `displayMode: ${dm} · maxHeight: ${mh} · requestDisplayMode: ${supportsDisplayMode ? "yes" : "no"} · pageSize: ${state.pageSize} · contentHeight: ${document.body.scrollHeight}px`;
       };
 
       const syncHeightAfterImages = async () => {
@@ -149,7 +177,7 @@
           q: payload.q ?? state.q,
           cursor: Number(payload.cursor ?? state.cursor ?? 0),
           nextCursor: payload.nextCursor ?? null,
-          pageSize: Number(payload.pageSize ?? state.pageSize ?? 3),
+          pageSize: Number(payload.pageSize ?? state.pageSize ?? desiredPageSize()),
           total: payload.total ?? state.total,
           totalMatches: payload.totalMatches ?? state.totalMatches,
           items,
@@ -163,9 +191,9 @@
         els.btnPrev.disabled = state.cursor <= 0;
         els.btnNext.disabled = state.nextCursor == null;
 
-        const top = items.slice(0,2);
-        els.gallery.innerHTML = top.length ? top.map(v => `
-          <button class="thumbBtn" data-url="${esc(v.url || "")}" title="${esc(v.title || "")}">
+        const thumbs = items.slice(0, desiredThumbCount());
+        els.gallery.innerHTML = thumbs.length ? thumbs.map(v => `
+          <button class="thumbBtn" data-url="${esc(v.url || "")}" title="${esc(v.title || "")}" type="button">
             <div class="thumbBox">
               <img src="${esc(v.thumbnailUrl || "")}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" />
             </div>
@@ -196,7 +224,21 @@
         requestAnimationFrame(() => { setDebug(); syncHeight(); });
       };
 
-      // ✅ 顯示模式按鈕
+      const refreshForMode = async () => {
+        const ps = desiredPageSize();
+        state.pageSize = ps;
+
+        // 只對 list/search 自動刷新（latest_song 就算了）
+        if (state.mode === "search_videos") {
+          await callTool("search_videos", { q: state.q, cursor: 0, pageSize: ps });
+        } else if (state.mode === "list_videos") {
+          await callTool("list_videos", { cursor: 0, pageSize: ps, sort: "newest" });
+        } else {
+          // 保底：至少更新 debug/高度
+          setDebug(); syncHeight();
+        }
+      };
+
       const requestMode = async (mode) => {
         if (!supportsDisplayMode) {
           setStatus("此環境沒有 requestDisplayMode（host 未開放程式切換模式）");
@@ -205,12 +247,13 @@
         }
         try {
           setStatus(`請求切換模式：${mode}...`);
-          const r = await host.requestDisplayMode({ mode });   // inline / pip / fullscreen :contentReference[oaicite:2]{index=2}
+          const r = await host.requestDisplayMode({ mode });
           setStatus(`切換結果：${JSON.stringify(r || { ok: true })}`);
+          await refreshForMode(); // ✅ 切換後用更大 pageSize 填滿畫面
         } catch (e) {
           setStatus(`切換失敗：${e?.message || String(e)}`);
+          setDebug(); syncHeight();
         }
-        setDebug(); syncHeight();
       };
 
       els.btnFs.disabled = !supportsDisplayMode;
@@ -221,11 +264,10 @@
       els.btnPip.addEventListener("click", () => requestMode("pip"));
       els.btnInline.addEventListener("click", () => requestMode("inline"));
 
-      // 搜尋/新歌/清單
       els.btnSearch.addEventListener("click", async () => {
         const q = els.q.value.trim();
         if (!q) return;
-        try { await callTool("search_videos", { q, cursor: 0, pageSize: state.pageSize }); }
+        try { await callTool("search_videos", { q, cursor: 0, pageSize: desiredPageSize() }); }
         catch (e) { setStatus(e?.message || String(e)); setDebug(); syncHeight(); }
       });
       els.q.addEventListener("keydown", (e) => { if (e.key === "Enter") els.btnSearch.click(); });
@@ -236,7 +278,7 @@
       });
 
       els.btnReset.addEventListener("click", async () => {
-        try { await callTool("list_videos", { cursor: 0, pageSize: state.pageSize, sort: "newest" }); }
+        try { await callTool("list_videos", { cursor: 0, pageSize: desiredPageSize(), sort: "newest" }); }
         catch (e) { setStatus(e?.message || String(e)); setDebug(); syncHeight(); }
       });
 
@@ -262,6 +304,7 @@
         try{
           const out = host?.toolOutput;
           const payload = out?.structuredContent || out;
+          state.pageSize = desiredPageSize();
           if (payload && (payload.items || payload.item)) render(payload);
           else await callTool("list_videos", { cursor:0, pageSize: state.pageSize, sort:"newest" });
         }catch(e){ setStatus(e?.message || String(e)); }
