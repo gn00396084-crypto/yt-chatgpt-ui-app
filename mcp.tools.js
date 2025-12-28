@@ -15,6 +15,10 @@ function fallbackThumb(videoId, thumbnailUrl) {
   return thumbnailUrl || (videoId ? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg` : "");
 }
 
+function fallbackUrl(videoId, url) {
+  return url || (videoId ? `https://www.youtube.com/watch?v=${videoId}` : "");
+}
+
 function norm(s) {
   return (s || "").toString().toLowerCase().trim();
 }
@@ -39,14 +43,30 @@ function escapeMd(s = "") {
   return String(s).replace(/[\[\]\(\)]/g, "\\$&");
 }
 
+function formatTitleMd(title = "") {
+  // 把「歌名」那段輕微做成斜體（貼近你截圖效果）
+  // 例：Lana Del Rey – Video Games  => Lana Del Rey – _Video Games_
+  const t = String(title);
+  const seps = [" – ", " - ", " — "];
+  for (const sep of seps) {
+    const i = t.indexOf(sep);
+    if (i > -1) {
+      const left = t.slice(0, i + sep.length);
+      const right = t.slice(i + sep.length);
+      if (right.trim()) return `${escapeMd(left)}_${escapeMd(right)}_`;
+    }
+  }
+  return escapeMd(t);
+}
+
 function mdThumbsAndLinks(items, heading) {
-  const top = items.slice(0, 2); // ✅ 2 張縮圖就會好似你張圖咁自動排成一行
+  const top = items.slice(0, 2);
   const imgs = top
     .map(v => `![${escapeMd(v.title || "thumb")}](${v.thumbnailUrl || ""})`)
-    .join("\n\n");
+    .join(" "); // ✅ 同一段落，ChatGPT 通常會排成一行
 
   const links = items
-    .map(v => `- [${escapeMd(v.title || "Untitled")}](${v.url || ""})`)
+    .map(v => `- [${formatTitleMd(v.title || "Untitled")}](${v.url || ""})`)
     .join("\n");
 
   return `${heading}\n\n${imgs}\n\n${links}`.trim();
@@ -69,15 +89,27 @@ async function fetchIndex(env) {
   }
 
   const videos = Array.isArray(data?.videos) ? data.videos : [];
-  const normalized = videos.map(v => ({
-    ...v,
-    description: v.description ?? "",
-    tags: Array.isArray(v.tags) ? v.tags : [],
-    url: v.url || (v.videoId ? `https://www.youtube.com/watch?v=${v.videoId}` : ""),
-    thumbnailUrl: fallbackThumb(v.videoId, v.thumbnailUrl)
-  }));
+  const normalized = videos.map(v => {
+    const videoId = v?.videoId;
+    return {
+      ...v,
+      description: v?.description ?? "",
+      tags: Array.isArray(v?.tags) ? v.tags : [],
+      url: fallbackUrl(videoId, v?.url),
+      thumbnailUrl: fallbackThumb(videoId, v?.thumbnailUrl)
+    };
+  });
 
   return { ...data, videos: normalized };
+}
+
+async function safeFetchIndex(env) {
+  try {
+    const data = await fetchIndex(env);
+    return { ok: true, data };
+  } catch (e) {
+    return { ok: false, error: e?.message || String(e) };
+  }
 }
 
 const intSchema = (min, max, def) => ({
@@ -87,8 +119,25 @@ const intSchema = (min, max, def) => ({
   ...(typeof def === "number" ? { default: def } : {})
 });
 
+function errorToolReturn(mode, msg) {
+  return {
+    structuredContent: { mode, error: msg },
+    content: [
+      {
+        type: "text",
+        text:
+          "我懂你在找內容，但目前抓取頻道資料失敗。\n\n" +
+          `錯誤：${msg}\n\n` +
+          "請檢查：\n" +
+          "- CF_WORKER_BASE_URL 是否正確\n" +
+          "- /my-channel/videos 是否真的回 JSON（不是 HTML/403/500）"
+      }
+    ]
+  };
+}
+
 export function registerTools(mcp, env) {
-  // ✅ 最新一首（原本已經有縮圖 markdown）
+  // ✅ 最新一首（文字也顯示縮圖）
   mcp.registerTool(
     "latest_song",
     {
@@ -99,7 +148,10 @@ export function registerTools(mcp, env) {
       _meta: toolMeta()
     },
     async () => {
-      const data = await fetchIndex(env);
+      const r = await safeFetchIndex(env);
+      if (!r.ok) return errorToolReturn("latest_song", r.error);
+
+      const data = r.data;
 
       const list = data.videos.slice().sort((a, b) => {
         const ta = Date.parse(a.publishedAt || 0) || 0;
@@ -117,12 +169,13 @@ export function registerTools(mcp, env) {
       }
 
       const thumb = fallbackThumb(item.videoId, item.thumbnailUrl);
+      const url = fallbackUrl(item.videoId, item.url);
 
       return {
         structuredContent: {
           mode: "latest_song",
           channelTitle: data.channelTitle,
-          item: { ...item, thumbnailUrl: thumb }
+          item: { ...item, thumbnailUrl: thumb, url }
         },
         content: [
           {
@@ -130,7 +183,7 @@ export function registerTools(mcp, env) {
             text:
               `![thumb](${thumb})\n\n` +
               `🎵 **新歌（目前最新一首）**\n\n` +
-              `- [${escapeMd(item.title || "")}](${item.url})\n` +
+              `- [${formatTitleMd(item.title || "")}](${url})\n` +
               `- 上架時間：${(item.publishedAt || "").slice(0, 10)}`
           }
         ]
@@ -138,7 +191,7 @@ export function registerTools(mcp, env) {
     }
   );
 
-  // ✅ 列出影片：加「2 張縮圖 + 連結清單」到 content（達到你張圖效果）
+  // ✅ 列出影片：輸出「2 張縮圖 + bullet links」（貼近你截圖效果）
   mcp.registerTool(
     "list_videos",
     {
@@ -157,7 +210,10 @@ export function registerTools(mcp, env) {
       _meta: toolMeta()
     },
     async ({ cursor = 0, pageSize = 3, sort = "newest" } = {}) => {
-      const data = await fetchIndex(env);
+      const r = await safeFetchIndex(env);
+      if (!r.ok) return errorToolReturn("list_videos", r.error);
+
+      const data = r.data;
 
       const list = data.videos.slice().sort((a, b) => {
         const ta = Date.parse(a.publishedAt || 0) || 0;
@@ -181,17 +237,14 @@ export function registerTools(mcp, env) {
         content: [
           {
             type: "text",
-            text: mdThumbsAndLinks(
-              items,
-              `🎧 **${escapeMd(data.channelTitle || "影片清單")}**`
-            )
+            text: mdThumbsAndLinks(items, `🎧 **${escapeMd(data.channelTitle || "影片清單")}**`)
           }
         ]
       };
     }
   );
 
-  // ✅ 搜尋影片：同樣加「2 張縮圖 + 連結清單」
+  // ✅ 搜尋影片：同樣輸出「2 張縮圖 + bullet links」
   mcp.registerTool(
     "search_videos",
     {
@@ -211,7 +264,10 @@ export function registerTools(mcp, env) {
       _meta: toolMeta()
     },
     async ({ q, cursor = 0, pageSize = 3 } = {}) => {
-      const data = await fetchIndex(env);
+      const r = await safeFetchIndex(env);
+      if (!r.ok) return errorToolReturn("search_videos", r.error);
+
+      const data = r.data;
 
       const matches = data.videos
         .map(v => ({ v, s: scoreVideo(v, q) }))
@@ -236,7 +292,7 @@ export function registerTools(mcp, env) {
         content: [
           {
             type: "text",
-            text: mdThumbsAndLinks(items, `🎧 **搜尋：${escapeMd(q)}**`)
+            text: mdThumbsAndLinks(items, `🎧 **${escapeMd(q)}**`)
           }
         ]
       };
