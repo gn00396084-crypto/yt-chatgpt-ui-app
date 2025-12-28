@@ -1,3 +1,4 @@
+// mcp.tools.js
 import { WIDGET_URI } from "./mcp.resources.js";
 
 function toolMeta() {
@@ -11,10 +12,7 @@ function toolMeta() {
 }
 
 function fallbackThumb(videoId, thumbnailUrl) {
-  return (
-    thumbnailUrl ||
-    (videoId ? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg` : "")
-  );
+  return thumbnailUrl || (videoId ? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg` : "");
 }
 
 function norm(s) {
@@ -34,6 +32,24 @@ function scoreVideo(v, q) {
   if (tags.some(t => t.includes(qq))) s += 4;
   if (desc.includes(qq)) s += 1;
   return s;
+}
+
+function escapeMd(s = "") {
+  // 避免 markdown link/括號撞字
+  return String(s).replace(/[\[\]\(\)]/g, "\\$&");
+}
+
+function mdThumbsAndLinks(items, heading) {
+  const top = items.slice(0, 2); // ✅ 2 張縮圖就會好似你張圖咁自動排成一行
+  const imgs = top
+    .map(v => `![${escapeMd(v.title || "thumb")}](${v.thumbnailUrl || ""})`)
+    .join("\n\n");
+
+  const links = items
+    .map(v => `- [${escapeMd(v.title || "Untitled")}](${v.url || ""})`)
+    .join("\n");
+
+  return `${heading}\n\n${imgs}\n\n${links}`.trim();
 }
 
 async function fetchIndex(env) {
@@ -57,6 +73,7 @@ async function fetchIndex(env) {
     ...v,
     description: v.description ?? "",
     tags: Array.isArray(v.tags) ? v.tags : [],
+    url: v.url || (v.videoId ? `https://www.youtube.com/watch?v=${v.videoId}` : ""),
     thumbnailUrl: fallbackThumb(v.videoId, v.thumbnailUrl)
   }));
 
@@ -71,7 +88,7 @@ const intSchema = (min, max, def) => ({
 });
 
 export function registerTools(mcp, env) {
-  // ✅ 最新一首（文字也顯示縮圖）
+  // ✅ 最新一首（原本已經有縮圖 markdown）
   mcp.registerTool(
     "latest_song",
     {
@@ -107,23 +124,21 @@ export function registerTools(mcp, env) {
           channelTitle: data.channelTitle,
           item: { ...item, thumbnailUrl: thumb }
         },
-        // ✅ 這行讓「文字結果」也會顯示縮圖（Markdown image）
         content: [
           {
             type: "text",
             text:
               `![thumb](${thumb})\n\n` +
-              `🎵 **新歌（目前最新一首）**是：\n\n` +
-              `${item.title}\n` +
-              `📅 上架時間：${(item.publishedAt || "").slice(0, 10)}\n` +
-              `▶️ YouTube：${item.url}`
+              `🎵 **新歌（目前最新一首）**\n\n` +
+              `- [${escapeMd(item.title || "")}](${item.url})\n` +
+              `- 上架時間：${(item.publishedAt || "").slice(0, 10)}`
           }
         ]
       };
     }
   );
 
-  // ✅ 列出影片（structuredContent 給 widget 用；文字簡短即可）
+  // ✅ 列出影片：加「2 張縮圖 + 連結清單」到 content（達到你張圖效果）
   mcp.registerTool(
     "list_videos",
     {
@@ -163,12 +178,20 @@ export function registerTools(mcp, env) {
           pageSize,
           items
         },
-        content: [{ type: "text", text: `列出影片：${items.length} / ${list.length}` }]
+        content: [
+          {
+            type: "text",
+            text: mdThumbsAndLinks(
+              items,
+              `🎧 **${escapeMd(data.channelTitle || "影片清單")}**`
+            )
+          }
+        ]
       };
     }
   );
 
-  // ✅ 搜尋影片（structuredContent 給 widget 用）
+  // ✅ 搜尋影片：同樣加「2 張縮圖 + 連結清單」
   mcp.registerTool(
     "search_videos",
     {
@@ -210,7 +233,12 @@ export function registerTools(mcp, env) {
           pageSize,
           items
         },
-        content: [{ type: "text", text: `搜尋「${q}」：${items.length} / ${matches.length}` }]
+        content: [
+          {
+            type: "text",
+            text: mdThumbsAndLinks(items, `🎧 **搜尋：${escapeMd(q)}**`)
+          }
+        ]
       };
     }
   );
