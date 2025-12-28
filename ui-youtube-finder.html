@@ -5,37 +5,146 @@
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>YouTube Finder</title>
     <style>
-      body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto;background:#0b0b0d;color:#fff}
-      .wrap{padding:14px}
-      .top{display:flex;gap:10px;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap}
-      .title{font-size:14px;font-weight:650;opacity:.9;display:flex;gap:8px;align-items:center}
-      .controls{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-      input{height:34px;padding:0 10px;border-radius:10px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.06);color:#fff;outline:none;min-width:200px}
-      button{height:34px;padding:0 10px;border-radius:10px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.10);color:#fff;cursor:pointer}
-      button:hover{background:rgba(255,255,255,.16)}
-      button:disabled{opacity:.5;cursor:not-allowed}
+      :root{
+        --bg:#ffffff;
+        --text:#111827;
+        --muted:#6b7280;
+        --border:#e5e7eb;
+        --soft:#f3f4f6;
+        --btn:#111827;
+        --btnText:#ffffff;
+        --btnGhost:#ffffff;
+      }
 
-      .meta{font-size:12px;color:rgba(255,255,255,.7);margin:6px 0 10px}
-      .gallery{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-bottom:10px}
-      .thumbBtn{border:0;padding:0;background:transparent;cursor:pointer;border-radius:14px;overflow:hidden}
-      .thumb{width:100%;aspect-ratio:16/9;object-fit:cover;display:block;background:#000}
+      body{
+        margin:0;
+        font-family:system-ui,-apple-system,Segoe UI,Roboto;
+        background:var(--bg);
+        color:var(--text);
+      }
 
-      .links{margin:0 0 8px 18px;padding:0}
-      .links li{margin:6px 0}
-      .links a{color:#fff;text-decoration:underline;text-underline-offset:3px}
-      .links em{opacity:.9}
+      .wrap{ padding:14px; }
 
-      .pager{display:flex;gap:8px;justify-content:flex-end;margin-top:10px}
-      .status{font-size:12px;color:rgba(255,255,255,.7);margin-top:10px;min-height:16px}
+      .top{
+        display:flex;
+        gap:10px;
+        align-items:center;
+        justify-content:space-between;
+        margin-bottom:10px;
+        flex-wrap:wrap;
+      }
+
+      .title{
+        font-size:14px;
+        font-weight:700;
+        display:flex;
+        gap:8px;
+        align-items:center;
+      }
+
+      .controls{
+        display:flex;
+        gap:8px;
+        align-items:center;
+        flex-wrap:wrap;
+      }
+
+      input{
+        height:34px;
+        padding:0 10px;
+        border-radius:10px;
+        border:1px solid var(--border);
+        background:#fff;
+        color:var(--text);
+        outline:none;
+        min-width:220px;
+      }
+      input::placeholder{ color:#9ca3af; }
+
+      button{
+        height:34px;
+        padding:0 10px;
+        border-radius:10px;
+        border:1px solid var(--border);
+        background:var(--btnGhost);
+        color:var(--text);
+        cursor:pointer;
+      }
+      button.primary{
+        background:var(--btn);
+        color:var(--btnText);
+        border-color:var(--btn);
+      }
+      button:hover{ filter:brightness(0.97); }
+      button:disabled{ opacity:.5; cursor:not-allowed; }
+
+      .meta{
+        font-size:12px;
+        color:var(--muted);
+        margin:6px 0 10px;
+      }
+
+      /* ✅ 縮圖區：固定 16:9，保證比例正確 */
+      .gallery{
+        display:grid;
+        grid-template-columns:repeat(2,minmax(0,1fr));
+        gap:10px;
+        margin-bottom:10px;
+      }
+      .thumbBtn{
+        border:1px solid var(--border);
+        background:#fff;
+        padding:0;
+        border-radius:14px;
+        overflow:hidden;
+        cursor:pointer;
+      }
+      .thumbBox{
+        width:100%;
+        aspect-ratio:16/9;   /* ✅ 16:9 */
+        background:var(--soft);
+      }
+      .thumbBox img{
+        width:100%;
+        height:100%;
+        object-fit:cover;    /* ✅ 不會變形；要「完整不裁切」可改 contain */
+        display:block;
+      }
+
+      .links{
+        margin:0 0 8px 18px;
+        padding:0;
+      }
+      .links li{ margin:6px 0; }
+      .links a{
+        color:var(--text);
+        text-decoration:underline;
+        text-underline-offset:3px;
+      }
+
+      .pager{
+        display:flex;
+        gap:8px;
+        justify-content:flex-end;
+        margin-top:10px;
+      }
+
+      .status{
+        font-size:12px;
+        color:var(--muted);
+        margin-top:10px;
+        min-height:16px;
+      }
     </style>
   </head>
+
   <body>
     <div class="wrap">
       <div class="top">
         <div class="title" id="channelTitle">🎧 YouTube Finder</div>
         <div class="controls">
           <input id="q" placeholder="輸入關鍵字（title/desc/tags）" />
-          <button id="btnSearch">搜尋</button>
+          <button id="btnSearch" class="primary">搜尋</button>
           <button id="btnLatest">新歌</button>
           <button id="btnReset">清單</button>
         </div>
@@ -77,16 +186,16 @@
       const esc = (s="") => String(s).replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;" }[c]));
       const status = (t="") => els.status.textContent = t;
 
-      async function openUrl(url) {
+      async function openUrl(url){
         if (!url) return;
-        try {
+        try{
           if (host?.openExternal) {
-            // ✅ 正確 signature：openExternal({ href })
+            // ✅ 正確 signature
             await host.openExternal({ href: url });
           } else {
             window.open(url, "_blank");
           }
-        } catch (err) {
+        }catch(err){
           status("打開連結失敗：" + (err?.message || String(err)));
         }
       }
@@ -101,7 +210,7 @@
         } catch {}
       }
 
-      function render(payload) {
+      function render(payload){
         if (!payload) return;
 
         const items = payload.items || (payload.item ? [payload.item] : []);
@@ -128,20 +237,21 @@
         els.btnPrev.disabled = state.cursor <= 0;
         els.btnNext.disabled = state.nextCursor == null;
 
-        // ✅ 2 張縮圖（同你張圖一樣）
+        // ✅ 兩張縮圖（同你效果圖一樣）
         const top = items.slice(0, 2);
         els.gallery.innerHTML = top.map(v => `
           <button class="thumbBtn" data-url="${esc(v.url || "")}" title="${esc(v.title || "")}">
-            <img class="thumb" src="${esc(v.thumbnailUrl || "")}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" />
+            <div class="thumbBox">
+              <img src="${esc(v.thumbnailUrl || "")}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" />
+            </div>
           </button>
         `).join("") || `<div class="meta">（沒有縮圖）</div>`;
 
         // ✅ bullet links
         els.links.innerHTML = items.map(v => `
-          <li><a href="#" data-url="${esc(v.url || "")}"><em>${esc(v.title || "")}</em></a></li>
+          <li><a href="#" data-url="${esc(v.url || "")}">${esc(v.title || "")}</a></li>
         `).join("") || "";
 
-        // bind click
         els.gallery.querySelectorAll("[data-url]").forEach(el => {
           el.addEventListener("click", (e) => {
             e.preventDefault();
@@ -158,7 +268,7 @@
         notifyHeightAfterImages();
       }
 
-      async function callTool(name, args) {
+      async function callTool(name, args){
         if (!host?.callTool) throw new Error("window.openai.callTool 不存在（請確認 skybridge 正常）");
         status(`呼叫工具：${name}...`);
         const out = await host.callTool(name, args || {});
@@ -202,7 +312,7 @@
         } catch (e) { status(e?.message || String(e)); }
       });
 
-      // 初次：tool 觸發時 host.toolOutput 可能已有資料
+      // 初次載入：如果 toolOutput 已有資料就直接 render，否則先拉清單
       try {
         const out = host?.toolOutput;
         const payload = out?.structuredContent || out;
