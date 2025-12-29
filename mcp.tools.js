@@ -10,11 +10,9 @@ function toolDescriptorMeta() {
   };
 }
 
-// ✅ 關鍵：tool response 也回 outputTemplate，避免只顯示工具卡
+// ✅ tool response 也回 outputTemplate：避免只顯示工具卡
 function toolResponseMeta() {
-  return {
-    "openai/outputTemplate": WIDGET_URI,
-  };
+  return { "openai/outputTemplate": WIDGET_URI };
 }
 
 function fallbackThumb(videoId, thumbnailUrl) {
@@ -33,6 +31,7 @@ function tokenizeQuery(q) {
   const raw = (q || "").toString().trim();
   if (!raw) return [];
 
+  // 基礎切詞：空白/符號
   const baseTokens = raw
     .split(/[\s/|,，。.!?！？、:：;；（）()【】\[\]-]+/g)
     .map((t) => t.trim())
@@ -46,6 +45,8 @@ function tokenizeQuery(q) {
   };
 
   const tokens = new Set();
+
+  // 原始 tokens
   for (const t of baseTokens) tokens.add(norm(t));
 
   // raw 直接包含 mood key（例如「失戀歌單」）也觸發擴展
@@ -82,12 +83,7 @@ async function fetchIndex(env) {
   if (!base) throw new Error("Missing env.CF_WORKER_BASE_URL");
 
   const url = `${base.replace(/\/+$/, "")}/my-channel/videos`;
-  const res = await fetch(url, {
-    headers: {
-      Accept: "application/json",
-      "User-Agent": "Mozilla/5.0 (yt-finder/1.0)",
-    },
-  });
+  const res = await fetch(url, { headers: { Accept: "application/json" } });
   const text = await res.text();
 
   if (!res.ok) {
@@ -234,16 +230,12 @@ export function registerTools(mcp, env) {
           content: [{ type: "text", text: `列出影片：${items.length} / ${list.length}` }],
         };
       } catch (e) {
-        return errorResult("list_videos", e?.message || String(e), {
-          cursor,
-          pageSize,
-          sort,
-        });
+        return errorResult("list_videos", e?.message || String(e), { cursor, pageSize, sort });
       }
     }
   );
 
-  // 搜尋（token + mood 擴展）
+  // 搜尋（token + mood 擴展；0 命中會 fallback 顯示最新）
   mcp.registerTool(
     "search_videos",
     {
@@ -266,8 +258,10 @@ export function registerTools(mcp, env) {
       try {
         const data = await fetchIndex(env);
 
-        const matches = data.videos
-          .map((v) => ({ v, s: scoreVideo(v, q) }))
+        const scored = data.videos.map((v) => ({ v, s: scoreVideo(v, q) }));
+
+        // 命中結果（s>0）
+        let matches = scored
           .filter((x) => x.s > 0)
           .sort((a, b) => {
             if (b.s !== a.s) return b.s - a.s;
@@ -276,6 +270,19 @@ export function registerTools(mcp, env) {
             return tb - ta; // 同分新片優先
           })
           .map((x) => x.v);
+
+        const tokens = tokenizeQuery(q);
+        let fallback = false;
+
+        // ✅ 0 命中 → fallback 顯示最新
+        if (matches.length === 0) {
+          fallback = true;
+          matches = data.videos.slice().sort((a, b) => {
+            const ta = Date.parse(a.publishedAt || 0) || 0;
+            const tb = Date.parse(b.publishedAt || 0) || 0;
+            return tb - ta;
+          });
+        }
 
         const items = matches.slice(cursor, cursor + pageSize);
         const nextCursor = cursor + pageSize < matches.length ? cursor + pageSize : null;
@@ -286,20 +293,25 @@ export function registerTools(mcp, env) {
             mode: "search_videos",
             channelTitle: data.channelTitle,
             q,
-            totalMatches: matches.length,
+            tokens,
+            fallback,
+            totalMatches: fallback ? 0 : matches.length, // 真正命中數（fallback 時保持 0）
             cursor,
             nextCursor,
             pageSize,
             items,
           },
-          content: [{ type: "text", text: `搜尋「${q}」：${items.length} / ${matches.length}` }],
+          content: [
+            {
+              type: "text",
+              text: fallback
+                ? `搜尋「${q}」：0 命中（已改顯示最新 ${items.length} 筆作參考）`
+                : `搜尋「${q}」：${items.length} / ${matches.length}`,
+            },
+          ],
         };
       } catch (e) {
-        return errorResult("search_videos", e?.message || String(e), {
-          q,
-          cursor,
-          pageSize,
-        });
+        return errorResult("search_videos", e?.message || String(e), { q, cursor, pageSize });
       }
     }
   );
