@@ -10,7 +10,7 @@ function toolDescriptorMeta() {
   };
 }
 
-// ✅ 關鍵：tool response 也回 outputTemplate，避免「只顯示工具卡、不渲染 widget」
+// ✅ 關鍵：tool response 也回 outputTemplate，避免只顯示工具卡
 function toolResponseMeta() {
   return {
     "openai/outputTemplate": WIDGET_URI,
@@ -82,18 +82,23 @@ async function fetchIndex(env) {
   if (!base) throw new Error("Missing env.CF_WORKER_BASE_URL");
 
   const url = `${base.replace(/\/+$/, "")}/my-channel/videos`;
-  const res = await fetch(url, { headers: { Accept: "application/json" } });
+  const res = await fetch(url, {
+    headers: {
+      Accept: "application/json",
+      "User-Agent": "Mozilla/5.0 (yt-finder/1.0)",
+    },
+  });
   const text = await res.text();
 
   if (!res.ok) {
-    throw new Error(`Index fetch failed: ${res.status} ${text.slice(0, 200)}`);
+    throw new Error(`Index fetch failed: ${res.status} ${text.slice(0, 300)}`);
   }
 
   let data;
   try {
     data = JSON.parse(text);
   } catch {
-    throw new Error(`Index returned non-JSON: ${text.slice(0, 200)}`);
+    throw new Error(`Index returned non-JSON: ${text.slice(0, 300)}`);
   }
 
   const videos = Array.isArray(data?.videos) ? data.videos : [];
@@ -213,8 +218,7 @@ export function registerTools(mcp, env) {
         });
 
         const items = list.slice(cursor, cursor + pageSize);
-        const nextCursor =
-          cursor + pageSize < list.length ? cursor + pageSize : null;
+        const nextCursor = cursor + pageSize < list.length ? cursor + pageSize : null;
 
         return {
           _meta: toolResponseMeta(),
@@ -274,8 +278,7 @@ export function registerTools(mcp, env) {
           .map((x) => x.v);
 
         const items = matches.slice(cursor, cursor + pageSize);
-        const nextCursor =
-          cursor + pageSize < matches.length ? cursor + pageSize : null;
+        const nextCursor = cursor + pageSize < matches.length ? cursor + pageSize : null;
 
         return {
           _meta: toolResponseMeta(),
