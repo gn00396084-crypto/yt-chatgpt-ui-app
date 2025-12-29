@@ -1,12 +1,19 @@
 import { WIDGET_URI } from "./mcp.resources.js";
 
-function toolMeta() {
+function toolDescriptorMeta() {
   return {
     "openai/outputTemplate": WIDGET_URI,
     "openai/widgetAccessible": true,
     "openai/visibility": "public",
     "openai/toolInvocation/invoking": "處理中…",
-    "openai/toolInvocation/invoked": "完成"
+    "openai/toolInvocation/invoked": "完成",
+  };
+}
+
+// ✅ 關鍵：tool response 也回 outputTemplate，避免「只顯示工具卡、不渲染 widget」
+function toolResponseMeta() {
+  return {
+    "openai/outputTemplate": WIDGET_URI,
   };
 }
 
@@ -21,33 +28,30 @@ function norm(s) {
   return (s || "").toString().toLowerCase().trim();
 }
 
-// 把 query 拆成多個 token，並做「心情詞」同義擴展
+// 把 query 拆 token + 心情同義擴展（支援「失戀歌單」「失戀 歌單」）
 function tokenizeQuery(q) {
-  const s = (q || "").toString().trim();
-  if (!s) return [];
+  const raw = (q || "").toString().trim();
+  if (!raw) return [];
 
-  // 以空白/常見符號切詞（支援「失戀 歌單」這種）
-  const baseTokens = s
+  const baseTokens = raw
     .split(/[\s/|,，。.!?！？、:：;；（）()【】\[\]-]+/g)
-    .map(t => t.trim())
+    .map((t) => t.trim())
     .filter(Boolean);
 
-  // 心情詞擴展（可自行增刪）
   const MOOD = {
     "失戀": ["分手", "心碎", "眼淚", "遺憾", "告別", "孤單", "想念", "離開", "失去"],
     "療癒": ["治癒", "溫柔", "放鬆", "安慰", "擁抱", "晚安", "陪伴"],
-    "開車": ["開車", "行車", "兜風", "夜景", "公路"],
-    "睡前": ["睡前", "晚安", "夜深", "靜", "放鬆"]
+    "開車": ["行車", "兜風", "夜景", "公路", "駕駛"],
+    "睡前": ["晚安", "夜深", "靜", "放鬆", "陪伴"],
   };
 
   const tokens = new Set();
 
-  // 原始 tokens
   for (const t of baseTokens) tokens.add(norm(t));
 
-  // query 本身包含心情詞時也觸發擴展（例如「失戀歌單」沒空白也能吃到）
+  // raw 直接包含 mood key（例如「失戀歌單」）也觸發擴展
   for (const k of Object.keys(MOOD)) {
-    if (s.includes(k)) {
+    if (raw.includes(k)) {
       tokens.add(norm(k));
       for (const t of MOOD[k]) tokens.add(norm(t));
     }
@@ -56,7 +60,6 @@ function tokenizeQuery(q) {
   return [...tokens].filter(Boolean);
 }
 
-// 依 tokens 計分（title > tags > description），分數越高越相關
 function scoreVideo(v, q) {
   const tokens = tokenizeQuery(q);
   if (!tokens.length) return 0;
@@ -69,10 +72,9 @@ function scoreVideo(v, q) {
   for (const tok of tokens) {
     if (!tok) continue;
     if (title.includes(tok)) s += 8;
-    if (tags.some(t => t.includes(tok))) s += 4;
+    if (tags.some((t) => t.includes(tok))) s += 4;
     if (desc.includes(tok)) s += 1;
   }
-
   return s;
 }
 
@@ -83,6 +85,7 @@ async function fetchIndex(env) {
   const url = `${base.replace(/\/+$/, "")}/my-channel/videos`;
   const res = await fetch(url, { headers: { Accept: "application/json" } });
   const text = await res.text();
+
   if (!res.ok) {
     throw new Error(`Index fetch failed: ${res.status} ${text.slice(0, 200)}`);
   }
@@ -95,11 +98,11 @@ async function fetchIndex(env) {
   }
 
   const videos = Array.isArray(data?.videos) ? data.videos : [];
-  const normalized = videos.map(v => ({
+  const normalized = videos.map((v) => ({
     ...v,
     description: v.description ?? "",
     tags: Array.isArray(v.tags) ? v.tags : [],
-    thumbnailUrl: fallbackThumb(v.videoId, v.thumbnailUrl)
+    thumbnailUrl: fallbackThumb(v.videoId, v.thumbnailUrl),
   }));
 
   return { ...data, videos: normalized };
@@ -109,11 +112,11 @@ const intSchema = (min, max, def) => ({
   type: "integer",
   minimum: min,
   ...(typeof max === "number" ? { maximum: max } : {}),
-  ...(typeof def === "number" ? { default: def } : {})
+  ...(typeof def === "number" ? { default: def } : {}),
 });
 
 export function registerTools(mcp, env) {
-  // ✅ 最新一首（文字也顯示縮圖）
+  // 最新一首
   mcp.registerTool(
     "latest_song",
     {
@@ -121,7 +124,7 @@ export function registerTools(mcp, env) {
       description: "取得頻道最新上架的一首影片（含縮圖/描述/tags）。",
       inputSchema: { type: "object", properties: {}, additionalProperties: false },
       annotations: { readOnlyHint: true },
-      _meta: toolMeta()
+      _meta: toolDescriptorMeta(),
     },
     async () => {
       const data = await fetchIndex(env);
@@ -136,36 +139,37 @@ export function registerTools(mcp, env) {
 
       if (!item) {
         return {
+          _meta: toolResponseMeta(),
           structuredContent: { mode: "latest_song", channelTitle: data.channelTitle, item: null },
-          content: [{ type: "text", text: "找不到影片（index 為空）" }]
+          content: [{ type: "text", text: "找不到影片（index 為空）" }],
         };
       }
 
       const thumb = fallbackThumb(item.videoId, item.thumbnailUrl);
 
       return {
+        _meta: toolResponseMeta(),
         structuredContent: {
           mode: "latest_song",
           channelTitle: data.channelTitle,
-          item: { ...item, thumbnailUrl: thumb }
+          item: { ...item, thumbnailUrl: thumb },
         },
-        // ✅ 這行讓「文字結果」也會顯示縮圖（Markdown image）
         content: [
           {
             type: "text",
             text:
               `![thumb](${thumb})\n\n` +
-              `🎵 **新歌（目前最新一首）**是：\n\n` +
+              `🎵 **新歌（目前最新一首）**：\n\n` +
               `${item.title}\n` +
-              `📅 上架時間：${(item.publishedAt || "").slice(0, 10)}\n` +
-              `▶️ YouTube：${item.url}`
-          }
-        ]
+              `📅 上架：${(item.publishedAt || "").slice(0, 10)}\n` +
+              `▶️ YouTube：${item.url}`,
+          },
+        ],
       };
     }
   );
 
-  // ✅ 列出影片（structuredContent 給 widget 用；文字簡短即可）
+  // 清單
   mcp.registerTool(
     "list_videos",
     {
@@ -176,12 +180,12 @@ export function registerTools(mcp, env) {
         properties: {
           cursor: intSchema(0, undefined, 0),
           pageSize: intSchema(1, 20, 3),
-          sort: { type: "string", enum: ["newest", "oldest"], default: "newest" }
+          sort: { type: "string", enum: ["newest", "oldest"], default: "newest" },
         },
-        additionalProperties: false
+        additionalProperties: false,
       },
       annotations: { readOnlyHint: true },
-      _meta: toolMeta()
+      _meta: toolDescriptorMeta(),
     },
     async ({ cursor = 0, pageSize = 3, sort = "newest" } = {}) => {
       const data = await fetchIndex(env);
@@ -196,6 +200,7 @@ export function registerTools(mcp, env) {
       const nextCursor = cursor + pageSize < list.length ? cursor + pageSize : null;
 
       return {
+        _meta: toolResponseMeta(),
         structuredContent: {
           mode: "list_videos",
           channelTitle: data.channelTitle,
@@ -203,14 +208,14 @@ export function registerTools(mcp, env) {
           cursor,
           nextCursor,
           pageSize,
-          items
+          items,
         },
-        content: [{ type: "text", text: `列出影片：${items.length} / ${list.length}` }]
+        content: [{ type: "text", text: `列出影片：${items.length} / ${list.length}` }],
       };
     }
   );
 
-  // ✅ 搜尋影片（structuredContent 給 widget 用）
+  // 搜尋（token + mood 擴展）
   mcp.registerTool(
     "search_videos",
     {
@@ -221,33 +226,33 @@ export function registerTools(mcp, env) {
         properties: {
           q: { type: "string", minLength: 1 },
           cursor: intSchema(0, undefined, 0),
-          pageSize: intSchema(1, 20, 3)
+          pageSize: intSchema(1, 20, 3),
         },
         required: ["q"],
-        additionalProperties: false
+        additionalProperties: false,
       },
       annotations: { readOnlyHint: true },
-      _meta: toolMeta()
+      _meta: toolDescriptorMeta(),
     },
     async ({ q, cursor = 0, pageSize = 3 } = {}) => {
       const data = await fetchIndex(env);
 
       const matches = data.videos
-        .map(v => ({ v, s: scoreVideo(v, q) }))
-        .filter(x => x.s > 0)
-        // 分數優先；同分新片優先
+        .map((v) => ({ v, s: scoreVideo(v, q) }))
+        .filter((x) => x.s > 0)
         .sort((a, b) => {
           if (b.s !== a.s) return b.s - a.s;
           const ta = Date.parse(a.v.publishedAt || 0) || 0;
           const tb = Date.parse(b.v.publishedAt || 0) || 0;
-          return tb - ta;
+          return tb - ta; // 同分新片優先
         })
-        .map(x => x.v);
+        .map((x) => x.v);
 
       const items = matches.slice(cursor, cursor + pageSize);
       const nextCursor = cursor + pageSize < matches.length ? cursor + pageSize : null;
 
       return {
+        _meta: toolResponseMeta(),
         structuredContent: {
           mode: "search_videos",
           channelTitle: data.channelTitle,
@@ -256,9 +261,9 @@ export function registerTools(mcp, env) {
           cursor,
           nextCursor,
           pageSize,
-          items
+          items,
         },
-        content: [{ type: "text", text: `搜尋「${q}」：${items.length} / ${matches.length}` }]
+        content: [{ type: "text", text: `搜尋「${q}」：${items.length} / ${matches.length}` }],
       };
     }
   );
