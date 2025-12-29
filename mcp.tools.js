@@ -39,14 +39,13 @@ function tokenizeQuery(q) {
     .filter(Boolean);
 
   const MOOD = {
-    "失戀": ["分手", "心碎", "眼淚", "遺憾", "告別", "孤單", "想念", "離開", "失去"],
-    "療癒": ["治癒", "溫柔", "放鬆", "安慰", "擁抱", "晚安", "陪伴"],
-    "開車": ["行車", "兜風", "夜景", "公路", "駕駛"],
-    "睡前": ["晚安", "夜深", "靜", "放鬆", "陪伴"],
+    失戀: ["分手", "心碎", "眼淚", "遺憾", "告別", "孤單", "想念", "離開", "失去"],
+    療癒: ["治癒", "溫柔", "放鬆", "安慰", "擁抱", "晚安", "陪伴"],
+    開車: ["行車", "兜風", "夜景", "公路", "駕駛"],
+    睡前: ["晚安", "夜深", "靜", "放鬆", "陪伴"],
   };
 
   const tokens = new Set();
-
   for (const t of baseTokens) tokens.add(norm(t));
 
   // raw 直接包含 mood key（例如「失戀歌單」）也觸發擴展
@@ -115,6 +114,14 @@ const intSchema = (min, max, def) => ({
   ...(typeof def === "number" ? { default: def } : {}),
 });
 
+function errorResult(mode, message, extra = {}) {
+  return {
+    _meta: toolResponseMeta(),
+    structuredContent: { mode, error: message, ...extra },
+    content: [{ type: "text", text: `⚠ ${message}` }],
+  };
+}
+
 export function registerTools(mcp, env) {
   // 最新一首
   mcp.registerTool(
@@ -127,45 +134,53 @@ export function registerTools(mcp, env) {
       _meta: toolDescriptorMeta(),
     },
     async () => {
-      const data = await fetchIndex(env);
+      try {
+        const data = await fetchIndex(env);
 
-      const list = data.videos.slice().sort((a, b) => {
-        const ta = Date.parse(a.publishedAt || 0) || 0;
-        const tb = Date.parse(b.publishedAt || 0) || 0;
-        return tb - ta;
-      });
+        const list = data.videos.slice().sort((a, b) => {
+          const ta = Date.parse(a.publishedAt || 0) || 0;
+          const tb = Date.parse(b.publishedAt || 0) || 0;
+          return tb - ta;
+        });
 
-      const item = list[0] || null;
+        const item = list[0] || null;
 
-      if (!item) {
+        if (!item) {
+          return {
+            _meta: toolResponseMeta(),
+            structuredContent: {
+              mode: "latest_song",
+              channelTitle: data.channelTitle,
+              item: null,
+            },
+            content: [{ type: "text", text: "找不到影片（index 為空）" }],
+          };
+        }
+
+        const thumb = fallbackThumb(item.videoId, item.thumbnailUrl);
+
         return {
           _meta: toolResponseMeta(),
-          structuredContent: { mode: "latest_song", channelTitle: data.channelTitle, item: null },
-          content: [{ type: "text", text: "找不到影片（index 為空）" }],
-        };
-      }
-
-      const thumb = fallbackThumb(item.videoId, item.thumbnailUrl);
-
-      return {
-        _meta: toolResponseMeta(),
-        structuredContent: {
-          mode: "latest_song",
-          channelTitle: data.channelTitle,
-          item: { ...item, thumbnailUrl: thumb },
-        },
-        content: [
-          {
-            type: "text",
-            text:
-              `![thumb](${thumb})\n\n` +
-              `🎵 **新歌（目前最新一首）**：\n\n` +
-              `${item.title}\n` +
-              `📅 上架：${(item.publishedAt || "").slice(0, 10)}\n` +
-              `▶️ YouTube：${item.url}`,
+          structuredContent: {
+            mode: "latest_song",
+            channelTitle: data.channelTitle,
+            item: { ...item, thumbnailUrl: thumb },
           },
-        ],
-      };
+          content: [
+            {
+              type: "text",
+              text:
+                `![thumb](${thumb})\n\n` +
+                `🎵 **新歌（目前最新一首）**：\n\n` +
+                `${item.title}\n` +
+                `📅 上架：${(item.publishedAt || "").slice(0, 10)}\n` +
+                `▶️ YouTube：${item.url}`,
+            },
+          ],
+        };
+      } catch (e) {
+        return errorResult("latest_song", e?.message || String(e));
+      }
     }
   );
 
@@ -188,30 +203,39 @@ export function registerTools(mcp, env) {
       _meta: toolDescriptorMeta(),
     },
     async ({ cursor = 0, pageSize = 3, sort = "newest" } = {}) => {
-      const data = await fetchIndex(env);
+      try {
+        const data = await fetchIndex(env);
 
-      const list = data.videos.slice().sort((a, b) => {
-        const ta = Date.parse(a.publishedAt || 0) || 0;
-        const tb = Date.parse(b.publishedAt || 0) || 0;
-        return sort === "oldest" ? ta - tb : tb - ta;
-      });
+        const list = data.videos.slice().sort((a, b) => {
+          const ta = Date.parse(a.publishedAt || 0) || 0;
+          const tb = Date.parse(b.publishedAt || 0) || 0;
+          return sort === "oldest" ? ta - tb : tb - ta;
+        });
 
-      const items = list.slice(cursor, cursor + pageSize);
-      const nextCursor = cursor + pageSize < list.length ? cursor + pageSize : null;
+        const items = list.slice(cursor, cursor + pageSize);
+        const nextCursor =
+          cursor + pageSize < list.length ? cursor + pageSize : null;
 
-      return {
-        _meta: toolResponseMeta(),
-        structuredContent: {
-          mode: "list_videos",
-          channelTitle: data.channelTitle,
-          total: list.length,
+        return {
+          _meta: toolResponseMeta(),
+          structuredContent: {
+            mode: "list_videos",
+            channelTitle: data.channelTitle,
+            total: list.length,
+            cursor,
+            nextCursor,
+            pageSize,
+            items,
+          },
+          content: [{ type: "text", text: `列出影片：${items.length} / ${list.length}` }],
+        };
+      } catch (e) {
+        return errorResult("list_videos", e?.message || String(e), {
           cursor,
-          nextCursor,
           pageSize,
-          items,
-        },
-        content: [{ type: "text", text: `列出影片：${items.length} / ${list.length}` }],
-      };
+          sort,
+        });
+      }
     }
   );
 
@@ -235,36 +259,45 @@ export function registerTools(mcp, env) {
       _meta: toolDescriptorMeta(),
     },
     async ({ q, cursor = 0, pageSize = 3 } = {}) => {
-      const data = await fetchIndex(env);
+      try {
+        const data = await fetchIndex(env);
 
-      const matches = data.videos
-        .map((v) => ({ v, s: scoreVideo(v, q) }))
-        .filter((x) => x.s > 0)
-        .sort((a, b) => {
-          if (b.s !== a.s) return b.s - a.s;
-          const ta = Date.parse(a.v.publishedAt || 0) || 0;
-          const tb = Date.parse(b.v.publishedAt || 0) || 0;
-          return tb - ta; // 同分新片優先
-        })
-        .map((x) => x.v);
+        const matches = data.videos
+          .map((v) => ({ v, s: scoreVideo(v, q) }))
+          .filter((x) => x.s > 0)
+          .sort((a, b) => {
+            if (b.s !== a.s) return b.s - a.s;
+            const ta = Date.parse(a.v.publishedAt || 0) || 0;
+            const tb = Date.parse(b.v.publishedAt || 0) || 0;
+            return tb - ta; // 同分新片優先
+          })
+          .map((x) => x.v);
 
-      const items = matches.slice(cursor, cursor + pageSize);
-      const nextCursor = cursor + pageSize < matches.length ? cursor + pageSize : null;
+        const items = matches.slice(cursor, cursor + pageSize);
+        const nextCursor =
+          cursor + pageSize < matches.length ? cursor + pageSize : null;
 
-      return {
-        _meta: toolResponseMeta(),
-        structuredContent: {
-          mode: "search_videos",
-          channelTitle: data.channelTitle,
+        return {
+          _meta: toolResponseMeta(),
+          structuredContent: {
+            mode: "search_videos",
+            channelTitle: data.channelTitle,
+            q,
+            totalMatches: matches.length,
+            cursor,
+            nextCursor,
+            pageSize,
+            items,
+          },
+          content: [{ type: "text", text: `搜尋「${q}」：${items.length} / ${matches.length}` }],
+        };
+      } catch (e) {
+        return errorResult("search_videos", e?.message || String(e), {
           q,
-          totalMatches: matches.length,
           cursor,
-          nextCursor,
           pageSize,
-          items,
-        },
-        content: [{ type: "text", text: `搜尋「${q}」：${items.length} / ${matches.length}` }],
-      };
+        });
+      }
     }
   );
 }
