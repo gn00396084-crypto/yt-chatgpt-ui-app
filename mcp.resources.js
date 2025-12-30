@@ -5,15 +5,32 @@ export const APP_ID = "io.github.gn00396084-crypto.ytfinder";
 export const WIDGET_URI = "ui://widget/youtube-finder.html";
 export const SKYBRIDGE_MIME = "text/html+skybridge";
 
-function computeWidgetDomain() {
-  // ✅ 用 env 控制，部署時設：WIDGET_DOMAIN=https://你的正式網域
-  // 只取 origin，符合「唯一網域（origin only）」要求
-  const raw = process.env.WIDGET_DOMAIN || process.env.PUBLIC_BASE_URL || "http://localhost:3000";
+function originFrom(value) {
+  if (!value) return null;
   try {
-    return new URL(raw).origin;
+    return new URL(value).origin;
   } catch {
-    return "http://localhost:3000";
+    // e.g. Railway provides RAILWAY_PUBLIC_DOMAIN like "xxxx.up.railway.app" (no scheme)
+    try {
+      return new URL(`https://${value}`).origin;
+    } catch {
+      return null;
+    }
   }
+}
+
+function computeWidgetDomain() {
+  // 部署到 Railway/GitHub 時，優先用：
+  // 1) WIDGET_DOMAIN 或 PUBLIC_BASE_URL（你自己設定的正式 https 網址）
+  // 2) Railway 系統變數 RAILWAY_PUBLIC_DOMAIN（自帶的 *.up.railway.app 網域）
+  // 最後才 fallback localhost（只給本機測試用）
+  return (
+    originFrom(process.env.WIDGET_DOMAIN) ||
+    originFrom(process.env.PUBLIC_BASE_URL) ||
+    originFrom(process.env.RAILWAY_PUBLIC_DOMAIN) ||
+    originFrom(process.env.RAILWAY_STATIC_URL) ||
+    "http://localhost:3000"
+  );
 }
 
 export const WIDGET_DOMAIN = computeWidgetDomain();
@@ -22,14 +39,13 @@ function buildWidgetCsp() {
   const connect = [];
   const base = process.env.CF_WORKER_BASE_URL;
   if (base) {
-    try {
-      connect.push(new URL(base).origin);
-    } catch {}
+    const o = originFrom(base);
+    if (o) connect.push(o);
   }
 
   return {
     connect_domains: connect,
-    // ✅ 放行常見縮圖/頭像域名
+    // 縮圖/頭像常見域名（YouTube）
     resource_domains: [
       "https://i.ytimg.com",
       "https://img.youtube.com",
