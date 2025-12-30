@@ -1,634 +1,316 @@
 <!doctype html>
 <html lang="zh-Hant">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>YouTube Finder</title>
-    <style>
-      :root {
-        color-scheme: light;
-      }
-      html,
-      body {
-        margin: 0;
-        padding: 0;
-        background: #fff;
-        color: #111;
-        font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto,
-          "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", Arial, sans-serif;
-      }
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>YouTube Finder UI v5</title>
+  <style>
+    :root{
+      --bg:#fff;--text:#111827;--muted:#6b7280;--border:#e5e7eb;--soft:#f3f4f6;
+      --btn:#111827;--btnText:#fff;
+    }
+    body{margin:0;font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto;background:var(--bg);color:var(--text)}
+    .wrap{padding:14px}
+    .top{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-bottom:8px}
+    .titleRow{display:flex;align-items:center;gap:8px}
+    .title{font-size:14px;font-weight:700;display:flex;gap:8px;align-items:center}
+    .badge{font-size:11px;padding:2px 8px;border-radius:999px;border:1px solid var(--border);color:var(--muted);background:#fff}
 
-      /* container */
-      .wrap {
-        padding: 14px 14px 16px;
-      }
+    .controls{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+    input{
+      height:34px;padding:0 10px;border-radius:10px;border:1px solid var(--border);
+      background:#fff;color:var(--text);outline:none;min-width:220px
+    }
+    input::placeholder{color:#9ca3af}
 
-      /* header */
-      .topbar {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 10px;
-        margin-bottom: 10px;
-      }
-      .brand {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        min-width: 0;
-      }
-      .logo {
-        width: 20px;
-        height: 20px;
-        border-radius: 6px;
-        background: linear-gradient(135deg, #111, #555);
-      }
-      .title {
-        font-weight: 800;
-        letter-spacing: 0.2px;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-      }
-      .badge {
-        font-size: 12px;
-        padding: 2px 8px;
-        border-radius: 999px;
-        border: 1px solid #e5e5e5;
-        color: #555;
-        background: #fafafa;
-      }
+    /* ✅ 只給「一般按鈕」用，避免影響縮圖 button */
+    .btn{
+      height:34px;
+      padding:0 10px;
+      border-radius:10px;
+      border:1px solid var(--border);
+      background:#fff;
+      color:var(--text);
+      cursor:pointer;
+    }
+    .btn.primary{background:var(--btn);border-color:var(--btn);color:var(--btnText)}
+    .btn:hover{filter:brightness(.97)}
+    .btn:disabled{opacity:.5;cursor:not-allowed}
 
-      /* debug */
-      .debug {
-        font-size: 12px;
-        color: #777;
-        margin: 6px 0 10px;
-        line-height: 1.4;
-      }
+    .debug{font-size:11px;color:var(--muted);margin:0 0 8px}
+    .meta{font-size:12px;color:var(--muted);margin:6px 0 10px}
 
-      /* controls */
-      .controls {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        flex-wrap: wrap;
-        margin-bottom: 10px;
-      }
-      .input {
-        flex: 1 1 240px;
-        min-width: 220px;
-        border: 1px solid #e5e5e5;
-        border-radius: 999px;
-        padding: 10px 12px;
-        outline: none;
-        background: #fff;
-      }
-      .btn {
-        border: 1px solid #e5e5e5;
-        background: #fff;
-        color: #111;
-        border-radius: 999px;
-        padding: 8px 12px;
-        font-weight: 700;
-        cursor: pointer;
-      }
-      .btn.primary {
-        background: #111;
-        color: #fff;
-        border-color: #111;
-      }
-      .btn:disabled {
-        opacity: 0.5;
-        cursor: not-allowed;
-      }
+    /* ✅ 縮圖：不再被 34px 壓扁 */
+    .gallery{
+      display:grid;
+      grid-template-columns:repeat(2,minmax(0,1fr));
+      gap:10px;
+      margin-bottom:10px;
+    }
+    .thumbBtn{
+      height:auto;              /* ✅ 關鍵：不要固定高度 */
+      border:1px solid var(--border);
+      background:#fff;
+      padding:0;
+      border-radius:14px;
+      overflow:hidden;
+      cursor:pointer;
+    }
+    .thumbBox{width:100%;aspect-ratio:16/9;background:var(--soft)}
+    .thumbBox img{width:100%;height:100%;object-fit:cover;display:block}
 
-      /* card */
-      .card {
-        border: 1px solid #eee;
-        border-radius: 18px;
-        padding: 12px;
-        box-shadow: 0 6px 20px rgba(0, 0, 0, 0.06);
-        background: #fff;
-      }
+    .links{margin:0 0 8px 18px;padding:0}
+    .links li{margin:6px 0}
+    .links a{color:var(--text);text-decoration:underline;text-underline-offset:3px}
 
-      /* thumbnails */
-      .thumbRow {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 10px;
-        margin: 10px 0 10px;
-      }
-      .thumb {
-        position: relative;
-        border-radius: 16px;
-        overflow: hidden;
-        background: #f3f3f3;
-        aspect-ratio: 16 / 9;
-      }
-      .thumb img {
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
-        display: block;
-      }
-      .thumb .overlay {
-        position: absolute;
-        inset: 0;
-        background: linear-gradient(
-          to top,
-          rgba(0, 0, 0, 0.45),
-          rgba(0, 0, 0, 0.05),
-          rgba(0, 0, 0, 0)
-        );
-      }
+    .pager{display:flex;gap:8px;justify-content:flex-end;margin-top:10px}
+    .status{font-size:12px;color:var(--muted);margin-top:10px;min-height:16px}
+  </style>
+</head>
 
-      /* list */
-      .metaLine {
-        font-size: 12px;
-        color: #666;
-        margin: 6px 0 10px;
-      }
-      .list {
-        margin: 8px 0 0;
-        padding-left: 20px;
-      }
-      .list li {
-        margin: 7px 0;
-        line-height: 1.35;
-      }
-      .videoLink {
-        color: #0b57d0;
-        text-decoration: underline;
-        cursor: pointer;
-        font-weight: 700;
-      }
-      .sub {
-        color: #444;
-        font-weight: 500;
-      }
+<body>
+  <div class="wrap" id="root">
+    <div class="top">
+      <div class="titleRow">
+        <div class="title" id="channelTitle">🎧 YouTube Finder</div>
+        <span class="badge">UI v5</span>
+      </div>
 
-      /* pager */
-      .pager {
-        display: flex;
-        justify-content: flex-end;
-        gap: 10px;
-        margin-top: 10px;
-      }
+      <div class="controls">
+        <input id="q" placeholder="輸入關鍵字（title/desc/tags）" />
+        <button id="btnSearch" class="btn primary" type="button">搜尋</button>
+        <button id="btnLatest" class="btn" type="button">新歌</button>
+        <button id="btnReset" class="btn" type="button">清單</button>
 
-      /* modal view */
-      .modalHero {
-        width: 100%;
-        border-radius: 18px;
-        overflow: hidden;
-        background: #f3f3f3;
-        aspect-ratio: 16 / 9;
-        margin-bottom: 12px;
-      }
-      .modalHero img {
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
-        display: block;
-      }
-      .modalTitle {
-        font-size: 22px;
-        font-weight: 900;
-        margin: 6px 0 8px;
-        line-height: 1.25;
-      }
-      .modalDesc {
-        white-space: pre-wrap;
-        color: #222;
-        line-height: 1.6;
-        margin: 0;
-      }
-      .modalActions {
-        display: flex;
-        gap: 10px;
-        flex-wrap: wrap;
-        margin-top: 14px;
-      }
-    </style>
-  </head>
-  <body>
-    <div id="root" class="wrap"></div>
+        <button id="btnFs" class="btn" type="button">全螢幕</button>
+        <button id="btnPip" class="btn" type="button">PiP</button>
+        <button id="btnInline" class="btn" type="button">回Inline</button>
+      </div>
+    </div>
 
-    <script>
-      const openai = window.openai || {};
-      const root = document.getElementById("root");
+    <div class="debug" id="debug"></div>
+    <div class="meta" id="meta"></div>
 
-      // Best-effort: host emits this when globals change (toolOutput updates, displayMode changes, etc.)
-      window.addEventListener(
-        "openai:set_globals",
-        () => {
-          render();
-        },
-        { passive: true }
-      );
+    <div class="gallery" id="gallery"></div>
+    <ul class="links" id="links"></ul>
 
-      function qs() {
-        return new URLSearchParams(location.search);
-      }
+    <div class="pager">
+      <button id="btnPrev" class="btn" type="button" disabled>上一頁</button>
+      <button id="btnNext" class="btn" type="button" disabled>下一頁</button>
+    </div>
 
-      function getViewMode() {
-        // Prefer host-provided view signal. Fallback to query param if present.
-        return (
-          openai?.view?.mode ||
-          qs().get("view_mode") ||
-          "inline"
-        );
-      }
+    <div class="status" id="status"></div>
+  </div>
 
-      function getViewParams() {
-        return openai?.view?.params || {};
-      }
+  <script>
+    (() => {
+      const host = window.openai;
+      const $ = (id) => document.getElementById(id);
 
-      function normalizeOutput(raw) {
-        const out = raw || {};
-        const items =
-          out.items ||
-          out.videos ||
-          out.results ||
-          out.songs ||
-          out.data ||
-          [];
+      const els = {
+        channelTitle: $("channelTitle"),
+        debug: $("debug"),
+        meta: $("meta"),
+        gallery: $("gallery"),
+        links: $("links"),
+        status: $("status"),
+        q: $("q"),
+        btnSearch: $("btnSearch"),
+        btnLatest: $("btnLatest"),
+        btnReset: $("btnReset"),
+        btnFs: $("btnFs"),
+        btnPip: $("btnPip"),
+        btnInline: $("btnInline"),
+        btnPrev: $("btnPrev"),
+        btnNext: $("btnNext"),
+      };
 
-        const normItems = (Array.isArray(items) ? items : []).map((it) => {
-          const id = it.id || it.videoId || it.vid || it.youtubeId || "";
-          const title = it.title || it.name || it.videoTitle || "";
-          const description =
-            it.description ||
-            it.desc ||
-            it.summary ||
-            it.snippet?.description ||
-            "";
-          const publishedAt =
-            it.publishedAt || it.published || it.date || it.snippet?.publishedAt || "";
-          const thumb =
-            it.thumbnailUrl ||
-            it.thumbnail ||
-            it.thumb ||
-            it.snippet?.thumbnails?.high?.url ||
-            it.snippet?.thumbnails?.medium?.url ||
-            it.snippet?.thumbnails?.default?.url ||
-            "";
-          const url =
-            it.url || it.link || (id ? `https://www.youtube.com/watch?v=${id}` : "");
-          returneturn = { id, title, description, publishedAt, thumbnailUrl: thumb, url };
-          return returnValue;
-        });
+      let state = { mode:"list_videos", q:"", cursor:0, pageSize:3, nextCursor:null, total:null, totalMatches:null, items:[] };
 
-        return {
-          channelTitle: out.channelTitle || out.channel || "故事說音樂",
-          total: out.total || out.totalResults || out.totalCount || null,
-          pageSize: out.pageSize || out.limit || null,
-          page: out.page || out.pageIndex || null,
-          nextPageToken: out.nextPageToken || out.nextToken || null,
-          prevPageToken: out.prevPageToken || out.prevToken || null,
-          items: normItems,
-        };
-      }
+      const esc = (s="") => String(s).replace(/[&<>"']/g, c => ({
+        "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"
+      }[c]));
+      const setStatus = (t="") => { els.status.textContent = t; };
 
-      function getData() {
-        return normalizeOutput(openai.toolOutput);
-      }
+      const supportsDisplayMode = typeof host?.requestDisplayMode === "function";
 
-      function setState(patch) {
-        const prev = openai.widgetState || {};
-        openai.setWidgetState?.({ ...prev, ...patch });
-      }
+      const getDisplayMode = () => host?.displayMode || "inline";
+      const desiredPageSize = () => (getDisplayMode() === "fullscreen" ? 12 : 3);
+      const desiredThumbCount = () => (getDisplayMode() === "fullscreen" ? 6 : 2);
 
-      function getState() {
-        return openai.widgetState || {};
-      }
+      const syncHeight = () => { try { host?.notifyIntrinsicHeight?.(document.body.scrollHeight); } catch {} };
 
-      function notifyHeight() {
-        // Give ChatGPT accurate height so it doesn't clip/scroll weirdly
+      const setDebug = () => {
+        const dm = host?.displayMode || "unknown";
+        const mh = (typeof host?.maxHeight === "number") ? `${host.maxHeight}px` : "unknown";
+        els.debug.textContent =
+          `displayMode: ${dm} · maxHeight: ${mh} · requestDisplayMode: ${supportsDisplayMode ? "yes" : "no"} · pageSize: ${state.pageSize} · contentHeight: ${document.body.scrollHeight}px`;
+      };
+
+      const syncHeightAfterImages = async () => {
         try {
-          openai.notifyIntrinsicHeight?.({
-            height: document.documentElement.scrollHeight,
-          });
+          const imgs = [...els.gallery.querySelectorAll("img")];
+          await Promise.allSettled(imgs.map(img =>
+            img.decode?.().catch(()=>{}) || new Promise(r => (img.onload = img.onerror = r))
+          ));
         } catch {}
-      }
+        requestAnimationFrame(() => { setDebug(); syncHeight(); });
+      };
 
-      function openExternal(href) {
-        if (!href) return;
-        if (openai.openExternal) return openai.openExternal({ href });
-        window.open(href, "_blank", "noopener,noreferrer");
-      }
-
-      function openVideoModal(video) {
-        if (!video?.title) return;
-
-        // Persist selection so the modal view can read it.
-        setState({ selectedVideo: video });
-
-        // Request a host modal (usually renders as right-side drawer on desktop).
-        if (openai.requestModal) {
-          return openai.requestModal({
-            title: video.title,
-            params: { selectedVideo: video },
-          });
-        }
-
-        // Fallback: if host doesn't support modal, at least go fullscreen and render detail there.
-        setState({ forceDetail: true });
-        openai.requestDisplayMode?.({ mode: "fullscreen" });
-        render();
-      }
-
-      async function runTool(toolName, args) {
-        const next = {
-          lastTool: toolName,
-          lastArgs: args || {},
-          forceDetail: false,
-        };
-        setState(next);
-
-        if (!openai.callTool) return;
-
+      const openUrl = async (url) => {
+        if (!url) return;
         try {
-          const res = await openai.callTool(toolName, args || {});
-          // Some hosts update toolOutput automatically; still handle direct returns.
-          const maybe =
-            res?.structuredContent ||
-            res?.toolOutput ||
-            res?.output ||
-            res;
+          if (host?.openExternal) await host.openExternal({ href: url });
+          else window.open(url, "_blank");
+        } catch (err) {
+          setStatus("打開連結失敗：" + (err?.message || String(err)));
+        }
+      };
 
-          if (maybe && typeof maybe === "object") {
-            // store as "shadow" so UI can use even if host doesn't auto-update toolOutput
-            setState({ shadowToolOutput: maybe });
-          }
+      const render = (payload) => {
+        if (!payload) return;
+        const items = payload.items || (payload.item ? [payload.item] : []);
+
+        state = {
+          ...state,
+          mode: payload.mode ?? state.mode,
+          q: payload.q ?? state.q,
+          cursor: Number(payload.cursor ?? state.cursor ?? 0),
+          nextCursor: payload.nextCursor ?? null,
+          pageSize: Number(payload.pageSize ?? state.pageSize ?? desiredPageSize()),
+          total: payload.total ?? state.total,
+          totalMatches: payload.totalMatches ?? state.totalMatches,
+          items,
+        };
+
+        els.channelTitle.textContent = `🎧 ${payload.channelTitle || "YouTube Finder"}`;
+        if (state.mode === "search_videos") els.meta.innerHTML = `搜尋：<b>${esc(state.q)}</b>　結果：${state.totalMatches ?? 0}`;
+        else if (state.mode === "latest_song") els.meta.textContent = "最新一首";
+        else els.meta.textContent = `影片總數：${state.total ?? "?"}`;
+
+        els.btnPrev.disabled = state.cursor <= 0;
+        els.btnNext.disabled = state.nextCursor == null;
+
+        const thumbs = items.slice(0, desiredThumbCount());
+        els.gallery.innerHTML = thumbs.length ? thumbs.map(v => `
+          <button class="thumbBtn" data-url="${esc(v.url || "")}" title="${esc(v.title || "")}" type="button">
+            <div class="thumbBox">
+              <img src="${esc(v.thumbnailUrl || "")}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" />
+            </div>
+          </button>
+        `).join("") : `<div class="meta">（沒有縮圖）</div>`;
+
+        els.links.innerHTML = items.length
+          ? items.map(v => `<li><a href="#" data-url="${esc(v.url || "")}">${esc(v.title || "")}</a></li>`).join("")
+          : "";
+
+        els.gallery.querySelectorAll("[data-url]").forEach(el =>
+          el.addEventListener("click", (e) => { e.preventDefault(); openUrl(el.getAttribute("data-url")); })
+        );
+        els.links.querySelectorAll("[data-url]").forEach(el =>
+          el.addEventListener("click", (e) => { e.preventDefault(); openUrl(el.getAttribute("data-url")); })
+        );
+
+        setDebug();
+        syncHeightAfterImages();
+      };
+
+      const callTool = async (name, args) => {
+        if (!host?.callTool) throw new Error("window.openai.callTool 不存在（請確認 skybridge 正常）");
+        setStatus(`呼叫工具：${name}...`);
+        const out = await host.callTool(name, args || {});
+        render(out?.structuredContent || out);
+        setStatus("");
+        requestAnimationFrame(() => { setDebug(); syncHeight(); });
+      };
+
+      const refreshForMode = async () => {
+        const ps = desiredPageSize();
+        state.pageSize = ps;
+
+        // 只對 list/search 自動刷新（latest_song 就算了）
+        if (state.mode === "search_videos") {
+          await callTool("search_videos", { q: state.q, cursor: 0, pageSize: ps });
+        } else if (state.mode === "list_videos") {
+          await callTool("list_videos", { cursor: 0, pageSize: ps, sort: "newest" });
+        } else {
+          // 保底：至少更新 debug/高度
+          setDebug(); syncHeight();
+        }
+      };
+
+      const requestMode = async (mode) => {
+        if (!supportsDisplayMode) {
+          setStatus("此環境沒有 requestDisplayMode（host 未開放程式切換模式）");
+          setDebug(); syncHeight();
+          return;
+        }
+        try {
+          setStatus(`請求切換模式：${mode}...`);
+          const r = await host.requestDisplayMode({ mode });
+          setStatus(`切換結果：${JSON.stringify(r || { ok: true })}`);
+          await refreshForMode(); // ✅ 切換後用更大 pageSize 填滿畫面
         } catch (e) {
-          setState({ lastError: String(e?.message || e) });
-        } finally {
-          render();
+          setStatus(`切換失敗：${e?.message || String(e)}`);
+          setDebug(); syncHeight();
         }
-      }
+      };
 
-      function readEffectiveToolOutput() {
-        // Prefer host toolOutput; fallback to shadow return from callTool
-        if (openai.toolOutput) return openai.toolOutput;
-        const st = getState();
-        return st.shadowToolOutput || null;
-      }
+      els.btnFs.disabled = !supportsDisplayMode;
+      els.btnPip.disabled = !supportsDisplayMode;
+      els.btnInline.disabled = !supportsDisplayMode;
 
-      function renderInline() {
-        const rawOut = readEffectiveToolOutput();
-        const data = normalizeOutput(rawOut);
+      els.btnFs.addEventListener("click", () => requestMode("fullscreen"));
+      els.btnPip.addEventListener("click", () => requestMode("pip"));
+      els.btnInline.addEventListener("click", () => requestMode("inline"));
 
-        const st = getState();
-        const lastError = st.lastError;
+      els.btnSearch.addEventListener("click", async () => {
+        const q = els.q.value.trim();
+        if (!q) return;
+        try { await callTool("search_videos", { q, cursor: 0, pageSize: desiredPageSize() }); }
+        catch (e) { setStatus(e?.message || String(e)); setDebug(); syncHeight(); }
+      });
+      els.q.addEventListener("keydown", (e) => { if (e.key === "Enter") els.btnSearch.click(); });
 
-        const displayMode = openai.displayMode || "inline";
-        const maxHeight =
-          typeof openai.maxHeight === "number" ? `${openai.maxHeight}px` : "unknown";
-        const viewMode = getViewMode();
-        const contentHeight = `${document.documentElement.scrollHeight}px`;
+      els.btnLatest.addEventListener("click", async () => {
+        try { await callTool("latest_song", {}); }
+        catch (e) { setStatus(e?.message || String(e)); setDebug(); syncHeight(); }
+      });
 
-        const topThumbs = data.items.slice(0, 2);
+      els.btnReset.addEventListener("click", async () => {
+        try { await callTool("list_videos", { cursor: 0, pageSize: desiredPageSize(), sort: "newest" }); }
+        catch (e) { setStatus(e?.message || String(e)); setDebug(); syncHeight(); }
+      });
 
-        root.innerHTML = `
-          <div class="card">
-            <div class="topbar">
-              <div class="brand">
-                <div class="logo" aria-hidden="true"></div>
-                <div class="title">${escapeHtml(data.channelTitle)}</div>
-                <span class="badge">UI v5</span>
-              </div>
-            </div>
+      els.btnPrev.addEventListener("click", async () => {
+        const prev = Math.max(0, state.cursor - state.pageSize);
+        try {
+          if (state.mode === "search_videos") await callTool("search_videos", { q: state.q, cursor: prev, pageSize: state.pageSize });
+          else await callTool("list_videos", { cursor: prev, pageSize: state.pageSize, sort: "newest" });
+        } catch (e) { setStatus(e?.message || String(e)); setDebug(); syncHeight(); }
+      });
 
-            <div class="controls">
-              <input id="q" class="input" placeholder="輸入關鍵字（title/desc/tags）" value="${escapeAttr(st.q || "")}" />
-              <button id="btnSearch" class="btn primary">搜尋</button>
-              <button id="btnLatest" class="btn">新歌</button>
-              <button id="btnList" class="btn">清單</button>
-              <button id="btnFs" class="btn">全螢幕</button>
-              <button id="btnPip" class="btn">PiP</button>
-              <button id="btnInline" class="btn">回Inline</button>
-            </div>
+      els.btnNext.addEventListener("click", async () => {
+        if (state.nextCursor == null) return;
+        try {
+          if (state.mode === "search_videos") await callTool("search_videos", { q: state.q, cursor: state.nextCursor, pageSize: state.pageSize });
+          else await callTool("list_videos", { cursor: state.nextCursor, pageSize: state.pageSize, sort: "newest" });
+        } catch (e) { setStatus(e?.message || String(e)); setDebug(); syncHeight(); }
+      });
 
-            <div class="debug">
-              displayMode: <b>${escapeHtml(displayMode)}</b> · maxHeight: ${escapeHtml(
-                maxHeight
-              )} · view: ${escapeHtml(viewMode)} · contentHeight: ${escapeHtml(contentHeight)}
-              ${
-                lastError
-                  ? `<div style="color:#b00020;margin-top:4px;">⚠ ${escapeHtml(lastError)}</div>`
-                  : ""
-              }
-            </div>
+      window.addEventListener("resize", () => requestAnimationFrame(() => { setDebug(); syncHeight(); }));
 
-            <div class="metaLine">
-              影片總數：${data.total ?? "—"}
-              ${data.pageSize ? ` · pageSize: ${escapeHtml(String(data.pageSize))}` : ""}
-            </div>
-
-            ${
-              topThumbs.length
-                ? `<div class="thumbRow">
-                    ${topThumbs
-                      .map(
-                        (v) => `
-                      <div class="thumb" title="${escapeAttr(v.title)}">
-                        ${
-                          v.thumbnailUrl
-                            ? `<img src="${escapeAttr(v.thumbnailUrl)}" alt="${escapeAttr(
-                                v.title
-                              )}" />`
-                            : ""
-                        }
-                        <div class="overlay"></div>
-                      </div>
-                    `
-                      )
-                      .join("")}
-                  </div>`
-                : ""
-            }
-
-            ${
-              data.items.length
-                ? `<ul class="list">
-                    ${data.items
-                      .map(
-                        (v) => `
-                      <li>
-                        <span class="videoLink" data-open="1" data-id="${escapeAttr(v.id)}">${escapeHtml(
-                          v.title || "(無標題)"
-                        )}</span>
-                        ${v.publishedAt ? `<span class="sub">（${escapeHtml(
-                          String(v.publishedAt).slice(0, 10)
-                        )}）</span>` : ""}
-                      </li>
-                    `
-                      )
-                      .join("")}
-                  </ul>`
-                : `<div style="color:#666;padding:8px 0;">（目前沒有資料。請在對話中先呼叫工具，或用上方按鈕查詢。）</div>`
-            }
-
-            <div class="pager">
-              <button id="btnPrev" class="btn" ${
-                data.prevPageToken ? "" : "disabled"
-              }>上一頁</button>
-              <button id="btnNext" class="btn" ${
-                data.nextPageToken ? "" : "disabled"
-              }>下一頁</button>
-            </div>
-          </div>
-        `;
-
-        // wire events
-        root.querySelector("#btnSearch")?.addEventListener("click", () => {
-          const q = root.querySelector("#q")?.value?.trim?.() || "";
-          setState({ q });
-          runTool("search_videos", { q, pageSize: 3 });
-        });
-
-        root.querySelector("#btnLatest")?.addEventListener("click", () => {
-          runTool("latest_song", {});
-        });
-
-        root.querySelector("#btnList")?.addEventListener("click", () => {
-          runTool("list_videos", { pageSize: 3 });
-        });
-
-        root.querySelector("#btnFs")?.addEventListener("click", () => {
-          openai.requestDisplayMode?.({ mode: "fullscreen" });
-        });
-        root.querySelector("#btnPip")?.addEventListener("click", () => {
-          openai.requestDisplayMode?.({ mode: "pip" });
-        });
-        root.querySelector("#btnInline")?.addEventListener("click", () => {
-          openai.requestDisplayMode?.({ mode: "inline" });
-        });
-
-        root.querySelector("#btnPrev")?.addEventListener("click", () => {
-          const st = getState();
-          // Use last tool if possible; otherwise default list_videos
-          const tool = st.lastTool || "list_videos";
-          const args = { ...(st.lastArgs || {}), pageToken: data.prevPageToken };
-          runTool(tool, args);
-        });
-
-        root.querySelector("#btnNext")?.addEventListener("click", () => {
-          const st = getState();
-          const tool = st.lastTool || "list_videos";
-          const args = { ...(st.lastArgs || {}), pageToken: data.nextPageToken };
-          runTool(tool, args);
-        });
-
-        // title click -> modal
-        root.querySelectorAll("[data-open='1']").forEach((el) => {
-          el.addEventListener("click", () => {
-            const id = el.getAttribute("data-id");
-            const rawOut = readEffectiveToolOutput();
-            const data = normalizeOutput(rawOut);
-            const video = data.items.find((x) => String(x.id) === String(id)) || data.items.find((x) => x.title === el.textContent) || null;
-            if (video) openVideoModal(video);
-          });
-        });
-
-        notifyHeight();
-      }
-
-      function renderModal() {
-        const st = getState();
-        const vp = getViewParams();
-
-        const video =
-          st.selectedVideo ||
-          vp.selectedVideo ||
-          null;
-
-        const displayMode = openai.displayMode || "inline";
-        const maxHeight =
-          typeof openai.maxHeight === "number" ? `${openai.maxHeight}px` : "unknown";
-
-        if (!video) {
-          root.innerHTML = `
-            <div class="card">
-              <div class="topbar">
-                <div class="brand">
-                  <div class="logo" aria-hidden="true"></div>
-                  <div class="title">詳細內容</div>
-                  <span class="badge">modal</span>
-                </div>
-              </div>
-              <div class="debug">displayMode: <b>${escapeHtml(displayMode)}</b> · maxHeight: ${escapeHtml(maxHeight)}</div>
-              <div style="color:#666;">沒有拿到要顯示的項目（selectedVideo）。請回到列表再點一次標題。</div>
-            </div>
-          `;
-          notifyHeight();
-          return;
-        }
-
-        root.innerHTML = `
-          <div class="card">
-            ${
-              video.thumbnailUrl
-                ? `<div class="modalHero"><img src="${escapeAttr(
-                    video.thumbnailUrl
-                  )}" alt="${escapeAttr(video.title)}" /></div>`
-                : ""
-            }
-            <div class="modalTitle">${escapeHtml(video.title || "(無標題)")}</div>
-            <p class="modalDesc">${escapeHtml(video.description || "（沒有說明內容）")}</p>
-
-            <div class="modalActions">
-              <button class="btn primary" id="btnOpenYoutube">在 YouTube 開啟</button>
-              <button class="btn" id="btnCopyTitle">複製標題</button>
-            </div>
-
-            <div class="debug" style="margin-top:10px;">
-              view: <b>${escapeHtml(getViewMode())}</b> · displayMode: ${escapeHtml(displayMode)} · maxHeight: ${escapeHtml(maxHeight)}
-            </div>
-          </div>
-        `;
-
-        root.querySelector("#btnOpenYoutube")?.addEventListener("click", () => {
-          openExternal(video.url);
-        });
-
-        root.querySelector("#btnCopyTitle")?.addEventListener("click", async () => {
-          try {
-            await navigator.clipboard.writeText(video.title || "");
-          } catch {}
-        });
-
-        notifyHeight();
-      }
-
-      function render() {
-        const mode = getViewMode();
-
-        // If host doesn't support modal view but we fallback to fullscreen detail
-        const st = getState();
-        if (mode !== "modal" && st.forceDetail) {
-          renderModal();
-          return;
-        }
-
-        if (mode === "modal") renderModal();
-        else renderInline();
-      }
-
-      function escapeHtml(s) {
-        return String(s ?? "")
-          .replaceAll("&", "&amp;")
-          .replaceAll("<", "&lt;")
-          .replaceAll(">", "&gt;")
-          .replaceAll('"', "&quot;")
-          .replaceAll("'", "&#039;");
-      }
-      function escapeAttr(s) {
-        return escapeHtml(s).replaceAll("\n", " ");
-      }
-
-      render();
-    </script>
-  </body>
+      (async () => {
+        try{
+          const out = host?.toolOutput;
+          const payload = out?.structuredContent || out;
+          state.pageSize = desiredPageSize();
+          if (payload && (payload.items || payload.item)) render(payload);
+          else await callTool("list_videos", { cursor:0, pageSize: state.pageSize, sort:"newest" });
+        }catch(e){ setStatus(e?.message || String(e)); }
+        requestAnimationFrame(() => { setDebug(); syncHeight(); });
+      })();
+    })();
+  </script>
+</body>
 </html>
