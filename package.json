@@ -1,5 +1,6 @@
 {
-  "name": "yt-chatgpt-ui-app",
+  "name": "yt-finder-mcp",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
   "engines": { "node": ">=20" },
