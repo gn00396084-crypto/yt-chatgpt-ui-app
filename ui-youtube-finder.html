@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>YouTube Finder UI</title>
+  <title>YouTube Finder UI v5</title>
   <style>
     :root{
       --bg:#fff;--text:#111827;--muted:#6b7280;--border:#e5e7eb;--soft:#f3f4f6;
@@ -11,10 +11,9 @@
     }
     body{margin:0;font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto;background:var(--bg);color:var(--text)}
     .wrap{padding:14px}
-
-    .top{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-bottom:10px}
+    .top{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-bottom:8px}
     .titleRow{display:flex;align-items:center;gap:8px}
-    .title{font-size:16px;font-weight:800;display:flex;gap:8px;align-items:center}
+    .title{font-size:14px;font-weight:700;display:flex;gap:8px;align-items:center}
     .badge{font-size:11px;padding:2px 8px;border-radius:999px;border:1px solid var(--border);color:var(--muted);background:#fff}
 
     .controls{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
@@ -24,31 +23,24 @@
     }
     input::placeholder{color:#9ca3af}
 
+    /* ✅ 只給「一般按鈕」用，避免影響縮圖 button */
     .btn{
-      height:34px;padding:0 10px;border-radius:10px;border:1px solid var(--border);
-      background:#fff;color:var(--text);cursor:pointer;
+      height:34px;
+      padding:0 10px;
+      border-radius:10px;
+      border:1px solid var(--border);
+      background:#fff;
+      color:var(--text);
+      cursor:pointer;
     }
     .btn.primary{background:var(--btn);border-color:var(--btn);color:var(--btnText)}
     .btn:hover{filter:brightness(.97)}
     .btn:disabled{opacity:.5;cursor:not-allowed}
 
-    .divider{height:1px;background:var(--border);margin:12px 0}
-    .meta{font-size:12px;color:var(--muted);margin:6px 0 10px}
     .debug{font-size:11px;color:var(--muted);margin:0 0 8px}
+    .meta{font-size:12px;color:var(--muted);margin:6px 0 10px}
 
-    /* 主區：清單（左） + 詳情（右） */
-    .main{
-      display:grid;
-      grid-template-columns: 1fr;
-      gap:12px;
-      align-items:start;
-    }
-    /* fullscreen 時做兩欄（左清單＋右資訊欄） */
-    body[data-display="fullscreen"] .main{
-      grid-template-columns: minmax(0,1fr) 380px;
-    }
-
-    /* --- list (left) --- */
+    /* ✅ 縮圖：不再被 34px 壓扁 */
     .gallery{
       display:grid;
       grid-template-columns:repeat(2,minmax(0,1fr));
@@ -56,6 +48,7 @@
       margin-bottom:10px;
     }
     .thumbBtn{
+      height:auto;              /* ✅ 關鍵：不要固定高度 */
       border:1px solid var(--border);
       background:#fff;
       padding:0;
@@ -72,53 +65,15 @@
 
     .pager{display:flex;gap:8px;justify-content:flex-end;margin-top:10px}
     .status{font-size:12px;color:var(--muted);margin-top:10px;min-height:16px}
-
-    /* --- detail (right) --- */
-    .detailCard{
-      border:1px solid var(--border);
-      border-radius:16px;
-      padding:12px;
-      background:#fff;
-    }
-    body[data-display="fullscreen"] .detailCard{
-      position:sticky;
-      top:12px;
-      max-height: calc(100vh - 24px);
-      overflow:auto;
-    }
-
-    .detailHero{
-      border:1px solid var(--border);
-      border-radius:14px;
-      overflow:hidden;
-      background:var(--soft);
-    }
-    .detailHero img{width:100%;height:auto;display:block}
-    .detailTitle{font-size:18px;font-weight:900;margin:10px 0 6px}
-    .detailSub{font-size:12px;color:var(--muted);margin-bottom:10px}
-    .detailText{font-size:14px;line-height:1.55;color:var(--text);white-space:pre-wrap}
-    .actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
-
-    /* inline 下保持乾淨 */
-    body[data-display="inline"] .controls,
-    body[data-display="inline"] .pager,
-    body[data-display="inline"] .debug,
-    body[data-display="inline"] #btnFs,
-    body[data-display="inline"] #btnPip,
-    body[data-display="inline"] #btnInline,
-    body[data-display="inline"] #btnLatest,
-    body[data-display="inline"] #btnReset{
-      display:none !important;
-    }
   </style>
 </head>
 
-<body data-display="inline">
+<body>
   <div class="wrap" id="root">
     <div class="top">
       <div class="titleRow">
         <div class="title" id="channelTitle">🎧 YouTube Finder</div>
-        <span class="badge" id="modeBadge">inline</span>
+        <span class="badge">UI v5</span>
       </div>
 
       <div class="controls">
@@ -136,39 +91,12 @@
     <div class="debug" id="debug"></div>
     <div class="meta" id="meta"></div>
 
-    <div class="main" id="main">
-      <!-- Left: list -->
-      <div id="listView">
-        <div class="gallery" id="gallery"></div>
-        <ul class="links" id="links"></ul>
+    <div class="gallery" id="gallery"></div>
+    <ul class="links" id="links"></ul>
 
-        <div class="pager">
-          <button id="btnPrev" class="btn" type="button" disabled>上一頁</button>
-          <button id="btnNext" class="btn" type="button" disabled>下一頁</button>
-        </div>
-      </div>
-
-      <!-- Right: detail -->
-      <div id="detailView" hidden>
-        <div class="detailCard">
-          <div class="detailHero">
-            <img id="detailImg" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" />
-          </div>
-
-          <div class="detailTitle" id="detailTitle"></div>
-          <div class="detailSub" id="detailSub"></div>
-          <div class="detailText" id="detailText"></div>
-
-          <div class="actions">
-            <button id="btnOpen" class="btn primary" type="button">開啟連結</button>
-            <button id="btnAsk" class="btn" type="button">問 ChatGPT</button>
-            <button id="btnBack" class="btn" type="button">清除右欄</button>
-          </div>
-
-          <div class="divider"></div>
-          <div class="meta" id="detailFoot"></div>
-        </div>
-      </div>
+    <div class="pager">
+      <button id="btnPrev" class="btn" type="button" disabled>上一頁</button>
+      <button id="btnNext" class="btn" type="button" disabled>下一頁</button>
     </div>
 
     <div class="status" id="status"></div>
@@ -181,7 +109,6 @@
 
       const els = {
         channelTitle: $("channelTitle"),
-        modeBadge: $("modeBadge"),
         debug: $("debug"),
         meta: $("meta"),
         gallery: $("gallery"),
@@ -196,56 +123,38 @@
         btnInline: $("btnInline"),
         btnPrev: $("btnPrev"),
         btnNext: $("btnNext"),
-        listView: $("listView"),
-        detailView: $("detailView"),
-        detailTitle: $("detailTitle"),
-        detailSub: $("detailSub"),
-        detailImg: $("detailImg"),
-        detailText: $("detailText"),
-        btnOpen: $("btnOpen"),
-        btnAsk: $("btnAsk"),
-        btnBack: $("btnBack"),
-        detailFoot: $("detailFoot"),
       };
 
       let state = { mode:"list_videos", q:"", cursor:0, pageSize:3, nextCursor:null, total:null, totalMatches:null, items:[] };
-      let detail = { open:false, item:null };
 
       const esc = (s="") => String(s).replace(/[&<>"']/g, c => ({
         "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"
       }[c]));
-
       const setStatus = (t="") => { els.status.textContent = t; };
 
       const supportsDisplayMode = typeof host?.requestDisplayMode === "function";
-      const getDisplayMode = () => host?.displayMode || "inline";
 
+      const getDisplayMode = () => host?.displayMode || "inline";
       const desiredPageSize = () => (getDisplayMode() === "fullscreen" ? 12 : 3);
       const desiredThumbCount = () => (getDisplayMode() === "fullscreen" ? 6 : 2);
 
       const syncHeight = () => { try { host?.notifyIntrinsicHeight?.(document.body.scrollHeight); } catch {} };
 
-      const setDisplayAttrs = () => {
-        const dm = getDisplayMode();
-        document.body.setAttribute("data-display", dm);
-        els.modeBadge.textContent = dm;
-      };
-
       const setDebug = () => {
         const dm = host?.displayMode || "unknown";
         const mh = (typeof host?.maxHeight === "number") ? `${host.maxHeight}px` : "unknown";
         els.debug.textContent =
-          `displayMode: ${dm} · maxHeight: ${mh} · requestDisplayMode: ${supportsDisplayMode ? "yes" : "no"} · pageSize: ${state.pageSize}`;
+          `displayMode: ${dm} · maxHeight: ${mh} · requestDisplayMode: ${supportsDisplayMode ? "yes" : "no"} · pageSize: ${state.pageSize} · contentHeight: ${document.body.scrollHeight}px`;
       };
 
       const syncHeightAfterImages = async () => {
         try {
-          const imgs = [...document.querySelectorAll("img")];
+          const imgs = [...els.gallery.querySelectorAll("img")];
           await Promise.allSettled(imgs.map(img =>
             img.decode?.().catch(()=>{}) || new Promise(r => (img.onload = img.onerror = r))
           ));
         } catch {}
-        requestAnimationFrame(() => { setDisplayAttrs(); setDebug(); syncHeight(); });
+        requestAnimationFrame(() => { setDebug(); syncHeight(); });
       };
 
       const openUrl = async (url) => {
@@ -258,44 +167,10 @@
         }
       };
 
-      const clearRightPane = () => {
-        detail.open = false;
-        detail.item = null;
-        els.detailView.hidden = true;
-        if (supportsDisplayMode && getDisplayMode() === "pip") {
-          host.requestDisplayMode({ mode: "inline" }).catch(()=>{});
-        }
-        requestAnimationFrame(() => { setDisplayAttrs(); setDebug(); syncHeight(); });
-      };
-
-      const showRightPane = () => {
-        els.detailView.hidden = false;
-        els.listView.hidden = (getDisplayMode() === "pip");
-        requestAnimationFrame(() => { setDisplayAttrs(); setDebug(); syncHeightAfterImages(); });
-      };
-
-      // 點標題要「右欄」：先試 pip，不行就 fullscreen（兩欄）
-      const ensureRightPaneMode = async () => {
-        if (!supportsDisplayMode) return;
-        const delay = (ms) => new Promise(r => setTimeout(r, ms));
-
-        try { await host.requestDisplayMode({ mode: "pip" }); } catch {}
-        await delay(120);
-
-        const dm1 = getDisplayMode();
-        if (dm1 === "pip" || dm1 === "fullscreen") return;
-
-        try { await host.requestDisplayMode({ mode: "fullscreen" }); } catch {}
-        await delay(120);
-      };
-
-      const renderList = (payload) => {
+      const render = (payload) => {
         if (!payload) return;
-
-        const channelTitle = payload.channelTitle || "Chill / 夜深聽";
-        els.channelTitle.textContent = `🎧 ${channelTitle}`;
-
         const items = payload.items || (payload.item ? [payload.item] : []);
+
         state = {
           ...state,
           mode: payload.mode ?? state.mode,
@@ -308,6 +183,7 @@
           items,
         };
 
+        els.channelTitle.textContent = `🎧 ${payload.channelTitle || "YouTube Finder"}`;
         if (state.mode === "search_videos") els.meta.innerHTML = `搜尋：<b>${esc(state.q)}</b>　結果：${state.totalMatches ?? 0}`;
         else if (state.mode === "latest_song") els.meta.textContent = "最新一首";
         else els.meta.textContent = `影片總數：${state.total ?? "?"}`;
@@ -316,8 +192,8 @@
         els.btnNext.disabled = state.nextCursor == null;
 
         const thumbs = items.slice(0, desiredThumbCount());
-        els.gallery.innerHTML = thumbs.length ? thumbs.map((v, idx) => `
-          <button class="thumbBtn" data-idx="${idx}" title="${esc(v.title || "")}" type="button">
+        els.gallery.innerHTML = thumbs.length ? thumbs.map(v => `
+          <button class="thumbBtn" data-url="${esc(v.url || "")}" title="${esc(v.title || "")}" type="button">
             <div class="thumbBox">
               <img src="${esc(v.thumbnailUrl || "")}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" />
             </div>
@@ -325,35 +201,16 @@
         `).join("") : `<div class="meta">（沒有縮圖）</div>`;
 
         els.links.innerHTML = items.length
-          ? items.map((v, i) => `<li><a href="#" data-i="${i}">${esc(v.title || "")}</a></li>`).join("")
+          ? items.map(v => `<li><a href="#" data-url="${esc(v.url || "")}">${esc(v.title || "")}</a></li>`).join("")
           : "";
 
-        const onPick = async (index) => {
-          const item = state.items[index];
-          if (!item) return;
-
-          detail.open = true;
-          detail.item = item;
-
-          await ensureRightPaneMode();
-
-          els.detailTitle.textContent = item.title || "";
-          els.detailSub.textContent = item.publishedAt ? `上架：${String(item.publishedAt).slice(0,10)}` : "";
-          els.detailImg.src = item.thumbnailUrl || "";
-          els.detailText.textContent = (item.description || "").trim() || "（無說明）";
-          els.detailFoot.textContent = "";
-
-          showRightPane();
-        };
-
-        els.gallery.querySelectorAll("[data-idx]").forEach(el =>
-          el.addEventListener("click", (e) => { e.preventDefault(); onPick(Number(el.getAttribute("data-idx"))); })
+        els.gallery.querySelectorAll("[data-url]").forEach(el =>
+          el.addEventListener("click", (e) => { e.preventDefault(); openUrl(el.getAttribute("data-url")); })
         );
-        els.links.querySelectorAll("[data-i]").forEach(el =>
-          el.addEventListener("click", (e) => { e.preventDefault(); onPick(Number(el.getAttribute("data-i"))); })
+        els.links.querySelectorAll("[data-url]").forEach(el =>
+          el.addEventListener("click", (e) => { e.preventDefault(); openUrl(el.getAttribute("data-url")); })
         );
 
-        setDisplayAttrs();
         setDebug();
         syncHeightAfterImages();
       };
@@ -362,37 +219,43 @@
         if (!host?.callTool) throw new Error("window.openai.callTool 不存在（請確認 skybridge 正常）");
         setStatus(`呼叫工具：${name}...`);
         const out = await host.callTool(name, args || {});
-        renderList(out?.structuredContent || out);
+        render(out?.structuredContent || out);
         setStatus("");
+        requestAnimationFrame(() => { setDebug(); syncHeight(); });
       };
 
       const refreshForMode = async () => {
         const ps = desiredPageSize();
         state.pageSize = ps;
 
+        // 只對 list/search 自動刷新（latest_song 就算了）
         if (state.mode === "search_videos") {
           await callTool("search_videos", { q: state.q, cursor: 0, pageSize: ps });
         } else if (state.mode === "list_videos") {
           await callTool("list_videos", { cursor: 0, pageSize: ps, sort: "newest" });
         } else {
-          setDisplayAttrs(); setDebug(); syncHeight();
+          // 保底：至少更新 debug/高度
+          setDebug(); syncHeight();
         }
       };
 
       const requestMode = async (mode) => {
-        if (!supportsDisplayMode) return;
+        if (!supportsDisplayMode) {
+          setStatus("此環境沒有 requestDisplayMode（host 未開放程式切換模式）");
+          setDebug(); syncHeight();
+          return;
+        }
         try {
           setStatus(`請求切換模式：${mode}...`);
-          await host.requestDisplayMode({ mode });
-          setStatus("");
-          setDisplayAttrs();
-          await refreshForMode();
+          const r = await host.requestDisplayMode({ mode });
+          setStatus(`切換結果：${JSON.stringify(r || { ok: true })}`);
+          await refreshForMode(); // ✅ 切換後用更大 pageSize 填滿畫面
         } catch (e) {
           setStatus(`切換失敗：${e?.message || String(e)}`);
+          setDebug(); syncHeight();
         }
       };
 
-      // Buttons
       els.btnFs.disabled = !supportsDisplayMode;
       els.btnPip.disabled = !supportsDisplayMode;
       els.btnInline.disabled = !supportsDisplayMode;
@@ -405,18 +268,18 @@
         const q = els.q.value.trim();
         if (!q) return;
         try { await callTool("search_videos", { q, cursor: 0, pageSize: desiredPageSize() }); }
-        catch (e) { setStatus(e?.message || String(e)); }
+        catch (e) { setStatus(e?.message || String(e)); setDebug(); syncHeight(); }
       });
       els.q.addEventListener("keydown", (e) => { if (e.key === "Enter") els.btnSearch.click(); });
 
       els.btnLatest.addEventListener("click", async () => {
         try { await callTool("latest_song", {}); }
-        catch (e) { setStatus(e?.message || String(e)); }
+        catch (e) { setStatus(e?.message || String(e)); setDebug(); syncHeight(); }
       });
 
       els.btnReset.addEventListener("click", async () => {
         try { await callTool("list_videos", { cursor: 0, pageSize: desiredPageSize(), sort: "newest" }); }
-        catch (e) { setStatus(e?.message || String(e)); }
+        catch (e) { setStatus(e?.message || String(e)); setDebug(); syncHeight(); }
       });
 
       els.btnPrev.addEventListener("click", async () => {
@@ -424,7 +287,7 @@
         try {
           if (state.mode === "search_videos") await callTool("search_videos", { q: state.q, cursor: prev, pageSize: state.pageSize });
           else await callTool("list_videos", { cursor: prev, pageSize: state.pageSize, sort: "newest" });
-        } catch (e) { setStatus(e?.message || String(e)); }
+        } catch (e) { setStatus(e?.message || String(e)); setDebug(); syncHeight(); }
       });
 
       els.btnNext.addEventListener("click", async () => {
@@ -432,45 +295,20 @@
         try {
           if (state.mode === "search_videos") await callTool("search_videos", { q: state.q, cursor: state.nextCursor, pageSize: state.pageSize });
           else await callTool("list_videos", { cursor: state.nextCursor, pageSize: state.pageSize, sort: "newest" });
-        } catch (e) { setStatus(e?.message || String(e)); }
+        } catch (e) { setStatus(e?.message || String(e)); setDebug(); syncHeight(); }
       });
 
-      // Detail actions
-      els.btnOpen.addEventListener("click", () => { if (detail?.item?.url) openUrl(detail.item.url); });
-      els.btnAsk.addEventListener("click", async () => {
-        const t = detail?.item?.title || "";
-        const msg = t ? `用繁體中文簡短介紹這支影片：${t}\n請整理 3-5 個重點。` : "簡短介紹這個內容。";
-        try {
-          if (host?.sendFollowUpMessage) await host.sendFollowUpMessage({ prompt: msg });
-          else setStatus("host.sendFollowUpMessage 不存在");
-        } catch (e) { setStatus(e?.message || String(e)); }
-      });
-      els.btnBack.addEventListener("click", clearRightPane);
-
-      // globals 更新（比較穩）
-      window.addEventListener("openai:set_globals", () => {
-        setDisplayAttrs();
-        setDebug();
-        els.listView.hidden = (getDisplayMode() === "pip") && !!detail.open;
-        syncHeight();
-      });
-
-      window.addEventListener("resize", () => requestAnimationFrame(() => { setDisplayAttrs(); setDebug(); syncHeight(); }));
+      window.addEventListener("resize", () => requestAnimationFrame(() => { setDebug(); syncHeight(); }));
 
       (async () => {
         try{
-          setDisplayAttrs();
-          state.pageSize = desiredPageSize();
-
           const out = host?.toolOutput;
           const payload = out?.structuredContent || out;
-
-          if (payload && (payload.items || payload.item)) renderList(payload);
+          state.pageSize = desiredPageSize();
+          if (payload && (payload.items || payload.item)) render(payload);
           else await callTool("list_videos", { cursor:0, pageSize: state.pageSize, sort:"newest" });
-        }catch(e){
-          setStatus(e?.message || String(e));
-        }
-        requestAnimationFrame(() => { setDisplayAttrs(); setDebug(); syncHeight(); });
+        }catch(e){ setStatus(e?.message || String(e)); }
+        requestAnimationFrame(() => { setDebug(); syncHeight(); });
       })();
     })();
   </script>
