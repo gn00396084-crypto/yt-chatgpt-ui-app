@@ -78,59 +78,53 @@ const server = createServer(async (req, res) => {
     if (method === "POST") {
       const body = await readJson(req).catch(() => null);
 
-      // existing session
-      if (sessionId && sessions.has(sessionId)) {
-        const { transport } = sessions.get(sessionId);
+      // initialize: create new session
+      if (isInitializeRequest(body) || looksLikeInitialize(body)) {
+        const id = randomUUID();
+        const mcp = createMcp();
+        const transport = new StreamableHTTPServerTransport({
+          sessionId: id,
+          // Note: requires Node 20+ for WebCrypto in some environments; Railway OK
+        });
+
+        sessions.set(id, { transport, mcp });
+        await mcp.connect(transport);
+
+        // This transport will write the response
+        res.setHeader("Mcp-Session-Id", id);
         await transport.handleRequest(req, res, body);
         return;
       }
 
-      // new session must initialize
-      const initOk = (() => {
-        try { return body && isInitializeRequest(body); }
-        catch { return looksLikeInitialize(body); }
-      })();
-
-      if (!initOk) {
-        res.writeHead(400, { "content-type": "application/json; charset=utf-8" });
-        res.end(JSON.stringify({
-          jsonrpc: "2.0",
-          error: { code: -32000, message: "Bad Request: expected initialize or valid session." },
-          id: null
-        }, null, 2));
+      // other POST: must have session
+      if (!sessionId || typeof sessionId !== "string") {
+        res.writeHead(400, { "content-type": "text/plain; charset=utf-8" }).end("Missing mcp-session-id");
         return;
       }
 
-      const mcp = createMcp();
-      const transport = new StreamableHTTPServerTransport({
-        sessionIdGenerator: () => randomUUID(),
-        enableJsonResponse: true,
-        onsessioninitialized: (sid) => sessions.set(sid, { transport, mcp })
-      });
+      const sess = sessions.get(sessionId);
+      if (!sess) {
+        res.writeHead(404, { "content-type": "text/plain; charset=utf-8" }).end("Unknown session");
+        return;
+      }
 
-      transport.onclose = () => {
-        const sid = transport.sessionId;
-        if (sid && sessions.has(sid)) {
-          const s = sessions.get(sid);
-          sessions.delete(sid);
-          try { s?.mcp?.close(); } catch {}
-        }
-      };
-
-      await mcp.connect(transport);
-      await transport.handleRequest(req, res, body);
+      await sess.transport.handleRequest(req, res, body);
       return;
     }
 
-    // GET/DELETE need session
-    if (method === "GET" || method === "DELETE") {
-      if (!sessionId || !sessions.has(sessionId)) {
-        res.writeHead(400, { "content-type": "text/plain; charset=utf-8" });
-        res.end("Invalid or missing session ID");
+    if (method === "DELETE") {
+      if (!sessionId || typeof sessionId !== "string") {
+        res.writeHead(400, { "content-type": "text/plain; charset=utf-8" }).end("Missing mcp-session-id");
         return;
       }
-      const { transport } = sessions.get(sessionId);
-      await transport.handleRequest(req, res);
+      const sess = sessions.get(sessionId);
+      if (!sess) {
+        res.writeHead(404, { "content-type": "text/plain; charset=utf-8" }).end("Unknown session");
+        return;
+      }
+      sessions.delete(sessionId);
+      try { await sess.transport.close(); } catch {}
+      res.writeHead(204).end();
       return;
     }
 
@@ -142,6 +136,6 @@ const server = createServer(async (req, res) => {
 });
 
 server.listen(PORT, () => {
-  console.log(`Server listening on http://localhost:${PORT}`);
+  console.log(`Server listening on port ${PORT}`);
   console.log(`MCP endpoint: ${MCP_PATH}`);
 });
