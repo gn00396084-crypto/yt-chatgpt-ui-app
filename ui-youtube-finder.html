@@ -33,11 +33,22 @@
     .btn:disabled{opacity:.5;cursor:not-allowed}
 
     .divider{height:1px;background:var(--border);margin:12px 0}
-
     .meta{font-size:12px;color:var(--muted);margin:6px 0 10px}
     .debug{font-size:11px;color:var(--muted);margin:0 0 8px}
 
-    /* --- list view (screenshot center) --- */
+    /* 主區：清單（左） + 詳情（右） */
+    .main{
+      display:grid;
+      grid-template-columns: 1fr;
+      gap:12px;
+      align-items:start;
+    }
+    /* fullscreen 時做兩欄（左清單＋右資訊欄） */
+    body[data-display="fullscreen"] .main{
+      grid-template-columns: minmax(0,1fr) 380px;
+    }
+
+    /* --- list (left) --- */
     .gallery{
       display:grid;
       grid-template-columns:repeat(2,minmax(0,1fr));
@@ -45,7 +56,6 @@
       margin-bottom:10px;
     }
     .thumbBtn{
-      height:auto;
       border:1px solid var(--border);
       background:#fff;
       padding:0;
@@ -63,20 +73,33 @@
     .pager{display:flex;gap:8px;justify-content:flex-end;margin-top:10px}
     .status{font-size:12px;color:var(--muted);margin-top:10px;min-height:16px}
 
-    /* --- detail view (right panel) --- */
-    .detailHero{
+    /* --- detail (right) --- */
+    .detailCard{
       border:1px solid var(--border);
       border-radius:16px;
+      padding:12px;
+      background:#fff;
+    }
+    body[data-display="fullscreen"] .detailCard{
+      position:sticky;
+      top:12px;
+      max-height: calc(100vh - 24px);
+      overflow:auto;
+    }
+
+    .detailHero{
+      border:1px solid var(--border);
+      border-radius:14px;
       overflow:hidden;
       background:var(--soft);
     }
     .detailHero img{width:100%;height:auto;display:block}
-    .detailTitle{font-size:20px;font-weight:900;margin:12px 0 6px}
+    .detailTitle{font-size:18px;font-weight:900;margin:10px 0 6px}
     .detailSub{font-size:12px;color:var(--muted);margin-bottom:10px}
     .detailText{font-size:14px;line-height:1.55;color:var(--text);white-space:pre-wrap}
     .actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
 
-    /* --- make inline look like screenshot: hide extra controls --- */
+    /* inline 下保持乾淨 */
     body[data-display="inline"] .controls,
     body[data-display="inline"] .pager,
     body[data-display="inline"] .debug,
@@ -92,10 +115,9 @@
 
 <body data-display="inline">
   <div class="wrap" id="root">
-
     <div class="top">
       <div class="titleRow">
-        <div class="title" id="channelTitle">🎧 Chill / 夜深聽</div>
+        <div class="title" id="channelTitle">🎧 YouTube Finder</div>
         <span class="badge" id="modeBadge">inline</span>
       </div>
 
@@ -114,38 +136,39 @@
     <div class="debug" id="debug"></div>
     <div class="meta" id="meta"></div>
 
-    <!-- List view -->
-    <div id="listView">
-      <div class="gallery" id="gallery"></div>
-      <ul class="links" id="links"></ul>
+    <div class="main" id="main">
+      <!-- Left: list -->
+      <div id="listView">
+        <div class="gallery" id="gallery"></div>
+        <ul class="links" id="links"></ul>
 
-      <div class="pager">
-        <button id="btnPrev" class="btn" type="button" disabled>上一頁</button>
-        <button id="btnNext" class="btn" type="button" disabled>下一頁</button>
-      </div>
-    </div>
-
-    <!-- Detail view -->
-    <div id="detailView" hidden>
-      <button id="btnBack" class="btn" type="button">← 回清單</button>
-
-      <div class="detailTitle" id="detailTitle"></div>
-      <div class="detailSub" id="detailSub"></div>
-
-      <div class="detailHero" id="detailHero">
-        <img id="detailImg" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" />
+        <div class="pager">
+          <button id="btnPrev" class="btn" type="button" disabled>上一頁</button>
+          <button id="btnNext" class="btn" type="button" disabled>下一頁</button>
+        </div>
       </div>
 
-      <div class="detailText" id="detailText"></div>
+      <!-- Right: detail -->
+      <div id="detailView" hidden>
+        <div class="detailCard">
+          <div class="detailHero">
+            <img id="detailImg" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" />
+          </div>
 
-      <div class="actions">
-        <button id="btnOpen" class="btn primary" type="button">開啟連結</button>
-        <button id="btnAsk" class="btn" type="button">問 ChatGPT</button>
-        <button id="btnInline2" class="btn" type="button">回 Inline</button>
+          <div class="detailTitle" id="detailTitle"></div>
+          <div class="detailSub" id="detailSub"></div>
+          <div class="detailText" id="detailText"></div>
+
+          <div class="actions">
+            <button id="btnOpen" class="btn primary" type="button">開啟連結</button>
+            <button id="btnAsk" class="btn" type="button">問 ChatGPT</button>
+            <button id="btnBack" class="btn" type="button">清除右欄</button>
+          </div>
+
+          <div class="divider"></div>
+          <div class="meta" id="detailFoot"></div>
+        </div>
       </div>
-
-      <div class="divider"></div>
-      <div class="meta" id="detailFoot"></div>
     </div>
 
     <div class="status" id="status"></div>
@@ -173,17 +196,15 @@
         btnInline: $("btnInline"),
         btnPrev: $("btnPrev"),
         btnNext: $("btnNext"),
-
         listView: $("listView"),
         detailView: $("detailView"),
-        btnBack: $("btnBack"),
         detailTitle: $("detailTitle"),
         detailSub: $("detailSub"),
         detailImg: $("detailImg"),
         detailText: $("detailText"),
         btnOpen: $("btnOpen"),
         btnAsk: $("btnAsk"),
-        btnInline2: $("btnInline2"),
+        btnBack: $("btnBack"),
         detailFoot: $("detailFoot"),
       };
 
@@ -214,7 +235,7 @@
         const dm = host?.displayMode || "unknown";
         const mh = (typeof host?.maxHeight === "number") ? `${host.maxHeight}px` : "unknown";
         els.debug.textContent =
-          `displayMode: ${dm} · maxHeight: ${mh} · requestDisplayMode: ${supportsDisplayMode ? "yes" : "no"} · pageSize: ${state.pageSize} · contentHeight: ${document.body.scrollHeight}px`;
+          `displayMode: ${dm} · maxHeight: ${mh} · requestDisplayMode: ${supportsDisplayMode ? "yes" : "no"} · pageSize: ${state.pageSize}`;
       };
 
       const syncHeightAfterImages = async () => {
@@ -237,25 +258,44 @@
         }
       };
 
-      const showList = () => {
+      const clearRightPane = () => {
         detail.open = false;
         detail.item = null;
         els.detailView.hidden = true;
-        els.listView.hidden = false;
+        if (supportsDisplayMode && getDisplayMode() === "pip") {
+          host.requestDisplayMode({ mode: "inline" }).catch(()=>{});
+        }
         requestAnimationFrame(() => { setDisplayAttrs(); setDebug(); syncHeight(); });
       };
 
-      const showDetail = () => {
-        // PiP 模式只顯示右側卡片
-        els.listView.hidden = (getDisplayMode() === "pip");
+      const showRightPane = () => {
         els.detailView.hidden = false;
+        els.listView.hidden = (getDisplayMode() === "pip");
         requestAnimationFrame(() => { setDisplayAttrs(); setDebug(); syncHeightAfterImages(); });
+      };
+
+      // 點標題要「右欄」：先試 pip，不行就 fullscreen（兩欄）
+      const ensureRightPaneMode = async () => {
+        if (!supportsDisplayMode) return;
+        const delay = (ms) => new Promise(r => setTimeout(r, ms));
+
+        try { await host.requestDisplayMode({ mode: "pip" }); } catch {}
+        await delay(120);
+
+        const dm1 = getDisplayMode();
+        if (dm1 === "pip" || dm1 === "fullscreen") return;
+
+        try { await host.requestDisplayMode({ mode: "fullscreen" }); } catch {}
+        await delay(120);
       };
 
       const renderList = (payload) => {
         if (!payload) return;
-        const items = payload.items || (payload.item ? [payload.item] : []);
 
+        const channelTitle = payload.channelTitle || "Chill / 夜深聽";
+        els.channelTitle.textContent = `🎧 ${channelTitle}`;
+
+        const items = payload.items || (payload.item ? [payload.item] : []);
         state = {
           ...state,
           mode: payload.mode ?? state.mode,
@@ -267,8 +307,6 @@
           totalMatches: payload.totalMatches ?? state.totalMatches,
           items,
         };
-
-        els.channelTitle.textContent = "🎧 Chill / 夜深聽";
 
         if (state.mode === "search_videos") els.meta.innerHTML = `搜尋：<b>${esc(state.q)}</b>　結果：${state.totalMatches ?? 0}`;
         else if (state.mode === "latest_song") els.meta.textContent = "最新一首";
@@ -290,7 +328,6 @@
           ? items.map((v, i) => `<li><a href="#" data-i="${i}">${esc(v.title || "")}</a></li>`).join("")
           : "";
 
-        // 點選任何項目：切到 PiP，右側只顯示「影片標題 + 說明」
         const onPick = async (index) => {
           const item = state.items[index];
           if (!item) return;
@@ -298,9 +335,7 @@
           detail.open = true;
           detail.item = item;
 
-          if (supportsDisplayMode) {
-            try { await host.requestDisplayMode({ mode: "pip" }); } catch {}
-          }
+          await ensureRightPaneMode();
 
           els.detailTitle.textContent = item.title || "";
           els.detailSub.textContent = item.publishedAt ? `上架：${String(item.publishedAt).slice(0,10)}` : "";
@@ -308,7 +343,7 @@
           els.detailText.textContent = (item.description || "").trim() || "（無說明）";
           els.detailFoot.textContent = "";
 
-          showDetail();
+          showRightPane();
         };
 
         els.gallery.querySelectorAll("[data-idx]").forEach(el =>
@@ -401,48 +436,26 @@
       });
 
       // Detail actions
-      els.btnBack.addEventListener("click", async () => {
-        if (supportsDisplayMode) {
-          try { await host.requestDisplayMode({ mode: "inline" }); } catch {}
-        }
-        showList();
-      });
-
-      els.btnInline2.addEventListener("click", async () => {
-        if (supportsDisplayMode) {
-          try { await host.requestDisplayMode({ mode: "inline" }); } catch {}
-        }
-        showList();
-      });
-
-      els.btnOpen.addEventListener("click", () => {
-        if (detail?.item?.url) openUrl(detail.item.url);
-      });
-
+      els.btnOpen.addEventListener("click", () => { if (detail?.item?.url) openUrl(detail.item.url); });
       els.btnAsk.addEventListener("click", async () => {
         const t = detail?.item?.title || "";
         const msg = t ? `用繁體中文簡短介紹這支影片：${t}\n請整理 3-5 個重點。` : "簡短介紹這個內容。";
         try {
-          if (host?.sendFollowUpMessage) await host.sendFollowUpMessage({ message: msg });
+          if (host?.sendFollowUpMessage) await host.sendFollowUpMessage({ prompt: msg });
           else setStatus("host.sendFollowUpMessage 不存在");
-        } catch (e) {
-          setStatus(e?.message || String(e));
-        }
+        } catch (e) { setStatus(e?.message || String(e)); }
+      });
+      els.btnBack.addEventListener("click", clearRightPane);
+
+      // globals 更新（比較穩）
+      window.addEventListener("openai:set_globals", () => {
+        setDisplayAttrs();
+        setDebug();
+        els.listView.hidden = (getDisplayMode() === "pip") && !!detail.open;
+        syncHeight();
       });
 
       window.addEventListener("resize", () => requestAnimationFrame(() => { setDisplayAttrs(); setDebug(); syncHeight(); }));
-
-      // Poll displayMode changes
-      let lastDm = getDisplayMode();
-      setInterval(() => {
-        const dm = getDisplayMode();
-        if (dm !== lastDm) {
-          lastDm = dm;
-          setDisplayAttrs();
-          if (dm === "inline" && detail.open) showList();
-          syncHeight();
-        }
-      }, 400);
 
       (async () => {
         try{
@@ -451,6 +464,7 @@
 
           const out = host?.toolOutput;
           const payload = out?.structuredContent || out;
+
           if (payload && (payload.items || payload.item)) renderList(payload);
           else await callTool("list_videos", { cursor:0, pageSize: state.pageSize, sort:"newest" });
         }catch(e){
