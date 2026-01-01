@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>YouTube Finder UI (pip clamp v1)</title>
+  <title>YouTube Finder UI (DEBUG)</title>
   <style>
     :root{
       --bg:#fff;--text:#111827;--muted:#6b7280;--border:#e5e7eb;--soft:#f3f4f6;
@@ -39,7 +39,7 @@
     .btn:hover{filter:brightness(.97)}
     .btn:disabled{opacity:.5;cursor:not-allowed}
 
-    .debug{font-size:11px;color:var(--muted);margin:0 0 8px}
+    .debugLine{font-size:11px;color:var(--muted);margin:0 0 8px}
     .meta{font-size:12px;color:var(--muted);margin:6px 0 8px}
     .hint{font-size:12px;color:var(--muted);margin:0 0 10px;line-height:1.45}
     .hint b{color:var(--text)}
@@ -53,28 +53,6 @@
     @media (min-width: 860px){
       .main{ grid-template-columns: minmax(0,1fr) 380px; }
       .detailCard{ position:sticky; top:12px; max-height:calc(100vh - 24px); overflow:auto; }
-    }
-
-    /* ====== PiP：固定高度 + 內部滾動，避免 widget 被撐大 ====== */
-    body[data-display="pip"] .wrap{padding:10px;}
-    body[data-display="pip"] .hint{display:none;}
-    body[data-display="pip"] .main{ grid-template-columns: 1fr !important; }
-    body[data-display="pip"] #listView{ display:none !important; }
-    body[data-display="pip"] #detailView{ display:block !important; }
-    body[data-display="pip"] .detailCard{
-      position:relative !important;
-      top:auto !important;
-      max-height: calc(var(--pipH) - 12px);
-      overflow:auto;
-    }
-    body[data-display="pip"] .detailHero img{
-      height:160px;
-      width:100%;
-      object-fit:cover;
-    }
-    body[data-display="pip"] .detailText{
-      max-height: 160px;
-      overflow:auto;
     }
 
     .gallery{
@@ -104,6 +82,7 @@
       text-decoration:underline;
       text-underline-offset:3px;
       cursor:pointer;
+      text-align:left;
     }
 
     .pager{display:flex;gap:8px;justify-content:flex-end;margin-top:10px}
@@ -130,6 +109,71 @@
     .divider{height:1px;background:var(--border);margin:12px 0}
 
     body[data-display="inline"] #btnInline{display:none}
+
+    /* ===== Debug HUD ===== */
+    .hud{
+      position:fixed; right:12px; bottom:12px;
+      width:min(560px, calc(100vw - 24px));
+      z-index:99999;
+      border:1px solid var(--border);
+      border-radius:14px;
+      background:#fff;
+      box-shadow:0 10px 30px rgba(0,0,0,.10);
+      overflow:hidden;
+      display:none;
+    }
+    .hud.show{display:block;}
+    .hudHead{
+      display:flex;align-items:center;justify-content:space-between;gap:10px;
+      padding:10px 12px;background:#fff;border-bottom:1px solid var(--border);
+      font-size:12px;color:var(--muted)
+    }
+    .hudTitle{font-weight:800;color:var(--text)}
+    .hudBody{padding:10px 12px;max-height:320px;overflow:auto;font-size:12px;color:var(--text)}
+    .hudGrid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+    .hudRow{border:1px solid var(--border);border-radius:12px;padding:8px;background:#fff}
+    .hudRow b{display:block;font-size:11px;color:var(--muted);margin-bottom:6px}
+    .hudMono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:11px;white-space:pre-wrap;word-break:break-word}
+    .hudBtns{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+    .hudBtns .btn{height:30px}
+    .hudToggle{
+      height:30px; padding:0 10px; border-radius:10px; border:1px solid var(--border);
+      background:#fff; color:var(--text); cursor:pointer;
+    }
+    .hudToggle small{color:var(--muted)}
+    .hudMiniBtn{
+      position:fixed; right:12px; bottom:12px;
+      z-index:99998;
+      height:34px;
+      padding:0 10px;
+      border-radius:999px;
+      border:1px solid var(--border);
+      background:#fff;
+      cursor:pointer;
+      box-shadow:0 10px 30px rgba(0,0,0,.10);
+    }
+
+    /* ====== ✅ PiP overrides MUST be last (avoid being overridden) ====== */
+    body[data-display="pip"] .wrap{padding:10px !important;}
+    body[data-display="pip"] .hint{display:none !important;}
+    body[data-display="pip"] .main{grid-template-columns: 1fr !important;}
+    body[data-display="pip"] #listView{display:none !important;}
+    body[data-display="pip"] #detailView{display:block !important;}
+    body[data-display="pip"] .detailCard{
+      position:relative !important;
+      top:auto !important;
+      max-height: calc(var(--pipH) - 24px) !important;
+      overflow:auto !important;
+    }
+    body[data-display="pip"] .detailHero img{
+      height:160px !important;
+      width:100% !important;
+      object-fit:cover !important;
+    }
+    body[data-display="pip"] .detailText{
+      max-height: 170px !important;
+      overflow:auto !important;
+    }
   </style>
 </head>
 
@@ -150,10 +194,12 @@
         <button id="btnFs" class="btn" type="button">全螢幕</button>
         <button id="btnPip" class="btn" type="button">PiP</button>
         <button id="btnInline" class="btn" type="button">回Inline</button>
+
+        <button id="btnBug" class="btn" type="button">🐞 Debug</button>
       </div>
     </div>
 
-    <div class="debug" id="debug"></div>
+    <div class="debugLine" id="debugLine"></div>
     <div class="meta" id="meta"></div>
     <div class="hint" id="hint">
       提示：若你在<b>主聊天輸入框</b>提問，ChatGPT 可能會產生<b>新的 widget</b>；要讓同一個 widget 持續同步更新，請用上方<b>搜尋/新歌/清單</b>，或右欄<b>問 ChatGPT</b>。
@@ -173,7 +219,7 @@
 
       <!-- Right detail -->
       <div id="detailView" hidden>
-        <div class="detailCard">
+        <div class="detailCard" id="detailCard">
           <div class="detailHero">
             <img id="detailImg" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" />
           </div>
@@ -197,21 +243,74 @@
     <div class="status" id="status"></div>
   </div>
 
+  <!-- Debug HUD -->
+  <button class="hudMiniBtn" id="hudMiniBtn" type="button">🐞</button>
+  <div class="hud" id="hud">
+    <div class="hudHead">
+      <div><span class="hudTitle">DEBUG HUD</span> <span style="color:var(--muted)">build 2026-01-01</span></div>
+      <div>
+        <button class="hudToggle" id="hudClose" type="button">關閉</button>
+      </div>
+    </div>
+    <div class="hudBody">
+      <div class="hudGrid">
+        <div class="hudRow">
+          <b>Host / Mode</b>
+          <div class="hudMono" id="hudHost"></div>
+        </div>
+        <div class="hudRow">
+          <b>Heights</b>
+          <div class="hudMono" id="hudHeights"></div>
+        </div>
+        <div class="hudRow">
+          <b>Layout (computed)</b>
+          <div class="hudMono" id="hudLayout"></div>
+        </div>
+        <div class="hudRow">
+          <b>Last Tool Output</b>
+          <div class="hudMono" id="hudPayload"></div>
+        </div>
+      </div>
+
+      <div class="hudBtns">
+        <button class="btn" id="btnMeasure" type="button">重新量測</button>
+        <button class="btn" id="btnCopy" type="button">複製 debug</button>
+
+        <button class="btn" id="btnNotify240" type="button">notify 240</button>
+        <button class="btn" id="btnNotify280" type="button">notify 280</button>
+        <button class="btn" id="btnNotify320" type="button">notify 320</button>
+        <button class="btn" id="btnNotifyMax" type="button">notify hostMax</button>
+
+        <button class="btn" id="btnToggleNotify" type="button">暫停 notify</button>
+        <button class="btn" id="btnForcePipCss" type="button">切換「強制PiP CSS」</button>
+      </div>
+
+      <div style="margin-top:10px">
+        <div class="hudRow">
+          <b>Event log (last 20)</b>
+          <div class="hudMono" id="hudLog"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <script>
     (() => {
       const host = window.openai;
+      const UI_BUILD = "2026-01-01-debug";
+      const APP = "ytfinder";
+
       const $ = (id) => document.getElementById(id);
 
       const els = {
+        root: $("root"),
         channelTitle: $("channelTitle"),
         modeBadge: $("modeBadge"),
-        debug: $("debug"),
+        debugLine: $("debugLine"),
         meta: $("meta"),
-        hint: $("hint"),
-        gallery: $("gallery"),
-        links: $("links"),
         status: $("status"),
         q: $("q"),
+
         btnSearch: $("btnSearch"),
         btnLatest: $("btnLatest"),
         btnReset: $("btnReset"),
@@ -220,67 +319,191 @@
         btnInline: $("btnInline"),
         btnPrev: $("btnPrev"),
         btnNext: $("btnNext"),
+        btnBug: $("btnBug"),
+
         listView: $("listView"),
+        gallery: $("gallery"),
+        links: $("links"),
 
         detailView: $("detailView"),
+        detailCard: $("detailCard"),
+        detailImg: $("detailImg"),
         detailTitle: $("detailTitle"),
         detailSub: $("detailSub"),
-        detailImg: $("detailImg"),
         detailText: $("detailText"),
         detailFoot: $("detailFoot"),
         btnOpen: $("btnOpen"),
         btnAsk: $("btnAsk"),
         btnBack: $("btnBack"),
-      };
 
-      const supportsDisplayMode = typeof host?.requestDisplayMode === "function";
-      const getDisplayMode = () => host?.displayMode || "inline";
+        hud: $("hud"),
+        hudMiniBtn: $("hudMiniBtn"),
+        hudClose: $("hudClose"),
+        hudHost: $("hudHost"),
+        hudHeights: $("hudHeights"),
+        hudLayout: $("hudLayout"),
+        hudPayload: $("hudPayload"),
+        hudLog: $("hudLog"),
+        btnMeasure: $("btnMeasure"),
+        btnCopy: $("btnCopy"),
+        btnNotify240: $("btnNotify240"),
+        btnNotify280: $("btnNotify280"),
+        btnNotify320: $("btnNotify320"),
+        btnNotifyMax: $("btnNotifyMax"),
+        btnToggleNotify: $("btnToggleNotify"),
+        btnForcePipCss: $("btnForcePipCss"),
+      };
 
       const esc = (s="") => String(s).replace(/[&<>"']/g, c => ({
         "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"
       }[c]));
-      const setStatus = (t="") => { els.status.textContent = t; };
 
-      // ---- pip height clamp: 這裡是關鍵 ----
-      const setDisplayAttrs = () => {
-        const dm = getDisplayMode();
-        document.body.setAttribute("data-display", dm);
-        els.modeBadge.textContent = dm;
+      const supportsDisplayMode = typeof host?.requestDisplayMode === "function";
+      const getDisplayMode = () => host?.displayMode || "inline";
 
-        const mh = (typeof host?.maxHeight === "number") ? host.maxHeight : 360;
-        document.documentElement.style.setProperty("--hostMaxH", `${mh}px`);
+      let notifyEnabled = true;
+      let forcePipCss = false;
 
-        // PiP 目標高度：取 min(maxHeight, 320)；也可自行調小
-        const pipH = Math.max(220, Math.min(mh, 320));
-        document.documentElement.style.setProperty("--pipH", `${pipH}px`);
+      // --------- Debug log ----------
+      const logBuf = [];
+      const pushLog = (msg) => {
+        const t = new Date().toLocaleTimeString();
+        logBuf.unshift(`[${t}] ${msg}`);
+        if (logBuf.length > 20) logBuf.pop();
+        els.hudLog.textContent = logBuf.join("\n");
       };
 
-      const intrinsicHeight = () => {
+      const setStatus = (t="") => { els.status.textContent = t; };
+
+      const getHostPayload = () => {
+        const out = host?.toolOutput;
+        return out?.structuredContent || out;
+      };
+
+      // payload filter
+      const allowedModes = new Set(["list_videos","search_videos","latest_song"]);
+      const looksLikeVideo = (v) => !!(v && typeof v === "object" && typeof v.title === "string" && (v.url || v.videoId || v.thumbnailUrl));
+      const isOurPayload = (p) => {
+        if (!p || typeof p !== "object") return false;
+        if (p.mode && !allowedModes.has(p.mode)) return false;
+        const items = Array.isArray(p.items) ? p.items : (p.item ? [p.item] : null);
+        if (!items) return false;
+        if (items.length === 0) return true;
+        return looksLikeVideo(items[0]);
+      };
+
+      // ----- Heights control -----
+      const setCssHeightsFromHost = () => {
+        const mh = (typeof host?.maxHeight === "number") ? host.maxHeight : 360;
+        document.documentElement.style.setProperty("--hostMaxH", `${mh}px`);
+        const pipH = Math.max(220, Math.min(mh, 320));
+        document.documentElement.style.setProperty("--pipH", `${pipH}px`);
+        return { mh, pipH };
+      };
+
+      const calcIntrinsicHeight = () => {
         const dm = getDisplayMode();
         const mh = (typeof host?.maxHeight === "number") ? host.maxHeight : 360;
         if (dm === "pip") {
-          // ✅ 在 PiP 絕對不要回報 scrollHeight，否則會撐大 widget
-          return Math.max(220, Math.min(mh, 320));
+          // ✅ PiP 強制固定高度（避免撐大）
+          const pipH = Math.max(220, Math.min(mh, 320));
+          return pipH;
         }
         return document.body.scrollHeight;
       };
 
-      const notifyHeight = () => {
-        try { host?.notifyIntrinsicHeight?.(intrinsicHeight()); } catch {}
+      let lastNotified = null;
+      const notifyHeight = (h = null) => {
+        if (!notifyEnabled) return;
+        const val = (typeof h === "number") ? h : calcIntrinsicHeight();
+        try {
+          host?.notifyIntrinsicHeight?.(val);
+          lastNotified = val;
+          pushLog(`notifyIntrinsicHeight(${val})`);
+        } catch (e) {
+          pushLog(`notifyIntrinsicHeight 失敗: ${e?.message || String(e)}`);
+        }
       };
 
-      const setDebug = () => {
-        const dm = host?.displayMode || "unknown";
-        const mh = (typeof host?.maxHeight === "number") ? `${host.maxHeight}px` : "unknown";
-        els.debug.textContent =
-          `displayMode: ${dm} · maxHeight: ${mh} · contentHeight: ${document.body.scrollHeight}px · intrinsicHeight: ${intrinsicHeight()}px · requestDisplayMode: ${supportsDisplayMode ? "yes" : "no"}`;
+      const setDisplayAttrs = () => {
+        const dm = getDisplayMode();
+        document.body.setAttribute("data-display", dm);
+
+        // Debug：允許強制 PiP CSS（用於判斷是不是 CSS 沒吃到）
+        if (forcePipCss) document.body.setAttribute("data-display", "pip");
+
+        const { mh, pipH } = setCssHeightsFromHost();
+        els.modeBadge.textContent = `${dm}${forcePipCss ? " (forceCSS:pip)" : ""}`;
+
+        return { dm, mh, pipH };
+      };
+
+      const measureLayout = () => {
+        const dm = getDisplayMode();
+        const mh = (typeof host?.maxHeight === "number") ? host.maxHeight : null;
+
+        const main = $("main");
+        const mainCols = main ? getComputedStyle(main).gridTemplateColumns : "n/a";
+        const listDisp = els.listView ? getComputedStyle(els.listView).display : "n/a";
+        const detailDisp = els.detailView ? getComputedStyle(els.detailView).display : "n/a";
+
+        const rootRect = els.root?.getBoundingClientRect?.();
+        const cardRect = els.detailCard?.getBoundingClientRect?.();
+
+        const body = document.body;
+        const de = document.documentElement;
+
+        const intrinsic = calcIntrinsicHeight();
+        const contentH = body.scrollHeight;
+
+        return {
+          dm,
+          mh,
+          contentH,
+          intrinsic,
+          lastNotified,
+          mainCols,
+          listDisp,
+          detailDisp,
+          rootRect: rootRect ? { w: Math.round(rootRect.width), h: Math.round(rootRect.height) } : null,
+          cardRect: cardRect ? { w: Math.round(cardRect.width), h: Math.round(cardRect.height) } : null,
+          client: { vw: window.innerWidth, vh: window.innerHeight },
+          doc: { deCH: de.clientHeight, deSH: de.scrollHeight, bodyCH: body.clientHeight, bodySH: body.scrollHeight },
+          pipH: getComputedStyle(document.documentElement).getPropertyValue("--pipH").trim(),
+          hostMaxH: getComputedStyle(document.documentElement).getPropertyValue("--hostMaxH").trim(),
+        };
+      };
+
+      const refreshDebug = () => {
+        const info = measureLayout();
+
+        els.debugLine.textContent =
+          `build:${UI_BUILD} · displayMode:${info.dm} · maxHeight:${info.mh ?? "?"} · contentHeight:${info.contentH}px · intrinsic:${info.intrinsic}px · lastNotify:${info.lastNotified ?? "-"} · mainCols:${info.mainCols}`;
+
+        els.hudHost.textContent =
+          `displayMode: ${info.dm}\nrequestDisplayMode: ${supportsDisplayMode ? "yes" : "no"}\nmaxHeight: ${info.mh ?? "unknown"}\nCSS --pipH: ${info.pipH}\nCSS --hostMaxH: ${info.hostMaxH}`;
+
+        els.hudHeights.textContent =
+          `contentHeight(body.scrollHeight): ${info.contentH}\ncalcIntrinsicHeight(): ${info.intrinsic}\nlastNotified: ${info.lastNotified ?? "-"}\nviewport: ${info.client.vw}x${info.client.vh}\ndoc: deCH:${info.doc.deCH} deSH:${info.doc.deSH} bodyCH:${info.doc.bodyCH} bodySH:${info.doc.bodySH}`;
+
+        els.hudLayout.textContent =
+          `main grid-template-columns: ${info.mainCols}\n#listView display: ${info.listDisp}\n#detailView display: ${info.detailDisp}\nrootRect: ${info.rootRect ? `${info.rootRect.w}x${info.rootRect.h}` : "n/a"}\ndetailCardRect: ${info.cardRect ? `${info.cardRect.w}x${info.cardRect.h}` : "n/a"}`;
+
+        const p = getHostPayload();
+        if (p && typeof p === "object") {
+          const items = Array.isArray(p.items) ? p.items : (p.item ? [p.item] : []);
+          els.hudPayload.textContent =
+            `isOurPayload: ${isOurPayload(p)}\nmode: ${p.mode ?? "-"}\nq: ${p.q ?? "-"}\nitems: ${items.length}\nnextCursor: ${p.nextCursor ?? "-"}\nchannelTitle: ${p.channelTitle ?? "-"}`;
+        } else {
+          els.hudPayload.textContent = `toolOutput: ${p ? String(p) : "null"}`;
+        }
       };
 
       const syncAfterPaint = () => {
         requestAnimationFrame(() => {
           setDisplayAttrs();
-          setDebug();
-          notifyHeight();
+          refreshDebug();
+          notifyHeight(); // 正常流程：每次 paint 後回報
         });
       };
 
@@ -294,23 +517,7 @@
         syncAfterPaint();
       };
 
-      // ---------- payload 驗證 ----------
-      const allowedModes = new Set(["list_videos","search_videos","latest_song"]);
-      const looksLikeVideo = (v) => !!(v && typeof v === "object" && typeof v.title === "string" && (v.url || v.videoId || v.thumbnailUrl));
-      const isOurPayload = (p) => {
-        if (!p || typeof p !== "object") return false;
-        if (p.mode && !allowedModes.has(p.mode)) return false;
-        const items = Array.isArray(p.items) ? p.items : (p.item ? [p.item] : null);
-        if (!items) return false;
-        if (items.length === 0) return true;
-        return looksLikeVideo(items[0]);
-      };
-      const getHostPayload = () => {
-        const out = host?.toolOutput;
-        return out?.structuredContent || out;
-      };
-
-      // ---------- 狀態 ----------
+      // ---------- App state ----------
       let state = {
         mode:"list_videos", q:"", cursor:0, pageSize:3, nextCursor:null,
         total:null, totalMatches:null, channelTitle:"YouTube Finder", items:[]
@@ -330,19 +537,23 @@
       const requestMode = async (mode) => {
         if (!supportsDisplayMode) return;
         try {
-          setStatus(`請求切換：${mode}...`);
+          pushLog(`requestDisplayMode(${mode})`);
           await host.requestDisplayMode({ mode });
-          setStatus("");
-          setTimeout(syncAfterPaint, 140);
+          setTimeout(syncAfterPaint, 120);
         } catch (e) {
-          setStatus(`切換失敗：${e?.message || String(e)}`);
+          pushLog(`requestDisplayMode 失敗: ${e?.message || String(e)}`);
         }
       };
 
       const ensurePipIfPossible = async () => {
         if (!supportsDisplayMode) return;
-        try { await host.requestDisplayMode({ mode:"pip" }); } catch {}
-        setTimeout(syncAfterPaint, 140);
+        try {
+          pushLog(`requestDisplayMode(pip)`);
+          await host.requestDisplayMode({ mode:"pip" });
+        } catch (e) {
+          pushLog(`pip 失敗: ${e?.message || String(e)}`);
+        }
+        setTimeout(syncAfterPaint, 120);
       };
 
       const clearRightPane = () => {
@@ -416,8 +627,8 @@
         const onPick = (i) => {
           const item = state.items[i];
           if (!item) return;
-          // ✅ 不自動開 YouTube，只更新右欄
-          showDetail(item, { tryPip: true });
+          pushLog(`pick item[${i}] title=${item.title?.slice(0,30) || ""}`);
+          showDetail(item, { tryPip: true }); // ✅ 不開 YouTube，只更新右欄
         };
 
         els.gallery.querySelectorAll("[data-i]").forEach(el =>
@@ -439,10 +650,14 @@
       const callTool = async (name, args) => {
         if (!host?.callTool) throw new Error("window.openai.callTool 不存在（請確認 skybridge 正常）");
         setStatus(`呼叫工具：${name}...`);
+        pushLog(`callTool(${name})`);
         const out = await host.callTool(name, args || {});
         const payload = out?.structuredContent || out;
-
-        if (isOurPayload(payload)) render(payload);
+        if (isOurPayload(payload)) {
+          render(payload);
+        } else {
+          pushLog(`ignored payload (not ours)`);
+        }
         setStatus("");
       };
 
@@ -455,6 +670,7 @@
         const sig = sigOf(payload);
         if (sig === lastSig) return;
         lastSig = sig;
+        pushLog(`toolOutput changed (mode=${payload.mode || "-"})`);
         render(payload);
       };
 
@@ -473,20 +689,20 @@
         state.mode = "search_videos";
         state.q = q;
         try { await callTool("search_videos", { q, cursor: 0, pageSize: desiredPageSize() }); }
-        catch (e) { setStatus(e?.message || String(e)); }
+        catch (e) { setStatus(e?.message || String(e)); pushLog(`search error: ${e?.message || e}`); }
       });
       els.q.addEventListener("keydown", (e) => { if (e.key === "Enter") els.btnSearch.click(); });
 
       els.btnLatest.addEventListener("click", async () => {
         state.mode = "latest_song";
         try { await callTool("latest_song", {}); }
-        catch (e) { setStatus(e?.message || String(e)); }
+        catch (e) { setStatus(e?.message || String(e)); pushLog(`latest error: ${e?.message || e}`); }
       });
 
       els.btnReset.addEventListener("click", async () => {
         state.mode = "list_videos";
         try { await callTool("list_videos", { cursor: 0, pageSize: desiredPageSize(), sort: "newest" }); }
-        catch (e) { setStatus(e?.message || String(e)); }
+        catch (e) { setStatus(e?.message || String(e)); pushLog(`reset error: ${e?.message || e}`); }
       });
 
       els.btnPrev.addEventListener("click", async () => {
@@ -494,7 +710,7 @@
         try {
           if (state.mode === "search_videos") await callTool("search_videos", { q: state.q, cursor: prev, pageSize: state.pageSize });
           else await callTool("list_videos", { cursor: prev, pageSize: state.pageSize, sort: "newest" });
-        } catch (e) { setStatus(e?.message || String(e)); }
+        } catch (e) { setStatus(e?.message || String(e)); pushLog(`prev error: ${e?.message || e}`); }
       });
 
       els.btnNext.addEventListener("click", async () => {
@@ -502,7 +718,7 @@
         try {
           if (state.mode === "search_videos") await callTool("search_videos", { q: state.q, cursor: state.nextCursor, pageSize: state.pageSize });
           else await callTool("list_videos", { cursor: state.nextCursor, pageSize: state.pageSize, sort: "newest" });
-        } catch (e) { setStatus(e?.message || String(e)); }
+        } catch (e) { setStatus(e?.message || String(e)); pushLog(`next error: ${e?.message || e}`); }
       });
 
       // Right panel actions
@@ -511,34 +727,107 @@
         const t = detail?.item?.title || "";
         const msg = t ? `用繁體中文簡短介紹這支影片：${t}\n請整理 3-5 個重點。` : "簡短介紹這個內容。";
         try {
-          if (host?.sendFollowUpMessage) await host.sendFollowUpMessage({ prompt: msg });
-          else setStatus("host.sendFollowUpMessage 不存在");
-        } catch (e) { setStatus(e?.message || String(e)); }
+          if (host?.sendFollowUpMessage) {
+            pushLog(`sendFollowUpMessage()`);
+            await host.sendFollowUpMessage({ prompt: msg });
+          } else setStatus("host.sendFollowUpMessage 不存在");
+        } catch (e) { setStatus(e?.message || String(e)); pushLog(`ask error: ${e?.message || e}`); }
       });
       els.btnBack.addEventListener("click", clearRightPane);
 
+      // ---- Debug HUD controls ----
+      const showHud = () => { els.hud.classList.add("show"); refreshDebug(); };
+      const hideHud = () => { els.hud.classList.remove("show"); };
+      els.btnBug.addEventListener("click", showHud);
+      els.hudMiniBtn.addEventListener("click", showHud);
+      els.hudClose.addEventListener("click", hideHud);
+
+      els.btnMeasure.addEventListener("click", () => {
+        pushLog(`manual measure`);
+        refreshDebug();
+      });
+
+      const copyDebug = async () => {
+        const info = measureLayout();
+        const txt =
+          `UI_BUILD=${UI_BUILD}\n` +
+          `displayMode=${info.dm}\nmaxHeight=${info.mh}\ncontentHeight=${info.contentH}\nintrinsic=${info.intrinsic}\nlastNotified=${info.lastNotified}\n` +
+          `mainCols=${info.mainCols}\nlistDisp=${info.listDisp}\ndetailDisp=${info.detailDisp}\n` +
+          `rootRect=${JSON.stringify(info.rootRect)}\ncardRect=${JSON.stringify(info.cardRect)}\n` +
+          `css(--pipH)=${info.pipH} css(--hostMaxH)=${info.hostMaxH}\n` +
+          `log:\n${logBuf.join("\n")}\n`;
+        try {
+          await navigator.clipboard.writeText(txt);
+          pushLog(`copied debug to clipboard`);
+          setStatus("已複製 debug");
+          setTimeout(()=>setStatus(""), 800);
+        } catch {
+          pushLog(`clipboard not available`);
+          setStatus("剪貼簿不可用（請手動截圖 debug HUD）");
+        }
+      };
+      els.btnCopy.addEventListener("click", copyDebug);
+
+      const notifyManual = (h) => {
+        notifyHeight(h);
+        refreshDebug();
+      };
+      els.btnNotify240.addEventListener("click", () => notifyManual(240));
+      els.btnNotify280.addEventListener("click", () => notifyManual(280));
+      els.btnNotify320.addEventListener("click", () => notifyManual(320));
+      els.btnNotifyMax.addEventListener("click", () => {
+        const mh = (typeof host?.maxHeight === "number") ? host.maxHeight : 320;
+        notifyManual(mh);
+      });
+
+      els.btnToggleNotify.addEventListener("click", () => {
+        notifyEnabled = !notifyEnabled;
+        els.btnToggleNotify.textContent = notifyEnabled ? "暫停 notify" : "恢復 notify";
+        pushLog(`notifyEnabled=${notifyEnabled}`);
+        refreshDebug();
+        if (notifyEnabled) notifyHeight();
+      });
+
+      els.btnForcePipCss.addEventListener("click", () => {
+        forcePipCss = !forcePipCss;
+        pushLog(`forcePipCss=${forcePipCss}`);
+        syncAfterPaint();
+      });
+
+      // ---- host events ----
       window.addEventListener("openai:set_globals", () => {
+        pushLog(`event: openai:set_globals (displayMode=${getDisplayMode()})`);
         syncFromHostToolOutput();
         syncAfterPaint();
       });
 
-      window.addEventListener("resize", () => syncAfterPaint());
+      window.addEventListener("resize", () => {
+        pushLog(`event: resize`);
+        syncAfterPaint();
+      });
 
       // Boot
       (async () => {
+        pushLog(`boot UI_BUILD=${UI_BUILD}`);
+        syncAfterPaint();
+
         try {
-          syncAfterPaint();
-
           const payload = getHostPayload();
-          if (isOurPayload(payload)) render(payload);
-          else await callTool("list_videos", { cursor: 0, pageSize: desiredPageSize(), sort: "newest" });
-
-          // 保底同步（同一 widget instance）
-          setInterval(syncFromHostToolOutput, 650);
+          if (isOurPayload(payload)) {
+            pushLog(`boot render from toolOutput`);
+            render(payload);
+          } else {
+            pushLog(`boot call list_videos`);
+            await callTool("list_videos", { cursor: 0, pageSize: desiredPageSize(), sort: "newest" });
+          }
         } catch (e) {
           setStatus(e?.message || String(e));
+          pushLog(`boot error: ${e?.message || e}`);
         }
-        syncAfterPaint();
+
+        // keep sync
+        setInterval(syncFromHostToolOutput, 650);
+        setInterval(refreshDebug, 1200);
       })();
     })();
   </script>
