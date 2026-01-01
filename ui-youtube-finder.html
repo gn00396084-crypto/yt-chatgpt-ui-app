@@ -3,12 +3,13 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>YouTube Finder UI</title>
+  <title>YouTube Finder UI (pip clamp v1)</title>
   <style>
     :root{
       --bg:#fff;--text:#111827;--muted:#6b7280;--border:#e5e7eb;--soft:#f3f4f6;
       --btn:#111827;--btnText:#fff;
       --hostMaxH: 360px;
+      --pipH: 320px;
     }
     body{margin:0;font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto;background:var(--bg);color:var(--text)}
     .wrap{padding:14px}
@@ -25,7 +26,6 @@
     }
     input::placeholder{color:#9ca3af}
 
-    /* 一般按鈕（不要套用到縮圖 button） */
     .btn{
       height:34px;
       padding:0 10px;
@@ -50,32 +50,32 @@
       gap:12px;
       align-items:start;
     }
-
-    /* 寬度夠才雙欄（inline 也可雙欄），但 PiP 會強制改回單欄 */
     @media (min-width: 860px){
       .main{ grid-template-columns: minmax(0,1fr) 380px; }
       .detailCard{ position:sticky; top:12px; max-height:calc(100vh - 24px); overflow:auto; }
     }
 
-    /* ===== PiP：避免 widget 被撐大/放大 ===== */
+    /* ====== PiP：固定高度 + 內部滾動，避免 widget 被撐大 ====== */
     body[data-display="pip"] .wrap{padding:10px;}
-    body[data-display="pip"] .main{ grid-template-columns: 1fr !important; } /* ✅ 重要：PiP 單欄 */
-    body[data-display="pip"] #listView{ display:none !important; }          /* ✅ PiP 只顯示右欄 */
-    body[data-display="pip"] #detailView{ max-width: 420px; margin: 0 auto; }
+    body[data-display="pip"] .hint{display:none;}
+    body[data-display="pip"] .main{ grid-template-columns: 1fr !important; }
+    body[data-display="pip"] #listView{ display:none !important; }
+    body[data-display="pip"] #detailView{ display:block !important; }
     body[data-display="pip"] .detailCard{
       position:relative !important;
       top:auto !important;
-      max-height: calc(var(--hostMaxH) - 20px);
+      max-height: calc(var(--pipH) - 12px);
       overflow:auto;
     }
     body[data-display="pip"] .detailHero img{
-      height:170px; width:100%; object-fit:cover;
+      height:160px;
+      width:100%;
+      object-fit:cover;
     }
     body[data-display="pip"] .detailText{
       max-height: 160px;
       overflow:auto;
     }
-    body[data-display="pip"] .hint{display:none;} /* PiP 空間小，提示隱藏 */
 
     .gallery{
       display:grid;
@@ -220,6 +220,7 @@
         btnInline: $("btnInline"),
         btnPrev: $("btnPrev"),
         btnNext: $("btnNext"),
+        listView: $("listView"),
 
         detailView: $("detailView"),
         detailTitle: $("detailTitle"),
@@ -238,53 +239,62 @@
       const esc = (s="") => String(s).replace(/[&<>"']/g, c => ({
         "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"
       }[c]));
-
       const setStatus = (t="") => { els.status.textContent = t; };
 
+      // ---- pip height clamp: 這裡是關鍵 ----
       const setDisplayAttrs = () => {
         const dm = getDisplayMode();
         document.body.setAttribute("data-display", dm);
         els.modeBadge.textContent = dm;
 
-        // 把 host.maxHeight 寫入 CSS var（PiP 限高）
-        const mh = (typeof host?.maxHeight === "number") ? host.maxHeight : null;
-        if (mh) document.documentElement.style.setProperty("--hostMaxH", `${mh}px`);
+        const mh = (typeof host?.maxHeight === "number") ? host.maxHeight : 360;
+        document.documentElement.style.setProperty("--hostMaxH", `${mh}px`);
+
+        // PiP 目標高度：取 min(maxHeight, 320)；也可自行調小
+        const pipH = Math.max(220, Math.min(mh, 320));
+        document.documentElement.style.setProperty("--pipH", `${pipH}px`);
       };
 
-      const calcIntrinsicHeight = () => {
+      const intrinsicHeight = () => {
         const dm = getDisplayMode();
-        const mh = (typeof host?.maxHeight === "number") ? host.maxHeight : null;
-
-        // PiP：不要用整個 scrollHeight 撐大，改成 clamp（讓內容在 card 裡滾動）
+        const mh = (typeof host?.maxHeight === "number") ? host.maxHeight : 360;
         if (dm === "pip") {
-          const target =  (mh ? Math.min(mh, 340) : 340);
-          return Math.max(220, target); // 最小高度
+          // ✅ 在 PiP 絕對不要回報 scrollHeight，否則會撐大 widget
+          return Math.max(220, Math.min(mh, 320));
         }
-
-        // inline/fullscreen：正常回報內容高度
         return document.body.scrollHeight;
       };
 
-      const syncHeight = () => { try { host?.notifyIntrinsicHeight?.(calcIntrinsicHeight()); } catch {} };
+      const notifyHeight = () => {
+        try { host?.notifyIntrinsicHeight?.(intrinsicHeight()); } catch {}
+      };
 
       const setDebug = () => {
         const dm = host?.displayMode || "unknown";
         const mh = (typeof host?.maxHeight === "number") ? `${host.maxHeight}px` : "unknown";
         els.debug.textContent =
-          `displayMode: ${dm} · maxHeight: ${mh} · requestDisplayMode: ${supportsDisplayMode ? "yes" : "no"} · contentHeight: ${document.body.scrollHeight}px · reportedHeight: ${calcIntrinsicHeight()}px`;
+          `displayMode: ${dm} · maxHeight: ${mh} · contentHeight: ${document.body.scrollHeight}px · intrinsicHeight: ${intrinsicHeight()}px · requestDisplayMode: ${supportsDisplayMode ? "yes" : "no"}`;
       };
 
-      const syncHeightAfterImages = async () => {
+      const syncAfterPaint = () => {
+        requestAnimationFrame(() => {
+          setDisplayAttrs();
+          setDebug();
+          notifyHeight();
+        });
+      };
+
+      const syncAfterImages = async () => {
         try {
           const imgs = [...document.querySelectorAll("img")];
           await Promise.allSettled(imgs.map(img =>
             img.decode?.().catch(()=>{}) || new Promise(r => (img.onload = img.onerror = r))
           ));
         } catch {}
-        requestAnimationFrame(() => { setDisplayAttrs(); setDebug(); syncHeight(); });
+        syncAfterPaint();
       };
 
-      // ---------- payload 驗證：避免被其他工具輸出污染 ----------
+      // ---------- payload 驗證 ----------
       const allowedModes = new Set(["list_videos","search_videos","latest_song"]);
       const looksLikeVideo = (v) => !!(v && typeof v === "object" && typeof v.title === "string" && (v.url || v.videoId || v.thumbnailUrl));
       const isOurPayload = (p) => {
@@ -307,27 +317,6 @@
       };
       let detail = { open:false, videoId:null, item:null };
 
-      const saveWidgetState = () => {
-        try {
-          if (typeof host?.setWidgetState !== "function") return;
-          host.setWidgetState({
-            app:"ytfinder",
-            mode: state.mode, q: state.q,
-            cursor: state.cursor, pageSize: state.pageSize,
-            selectedVideoId: detail.videoId || null
-          });
-        } catch {}
-      };
-      const restoreWidgetState = () => {
-        const ws = host?.widgetState;
-        if (!ws || ws.app !== "ytfinder") return;
-        if (typeof ws.mode === "string") state.mode = ws.mode;
-        if (typeof ws.q === "string") state.q = ws.q;
-        if (typeof ws.cursor === "number") state.cursor = ws.cursor;
-        if (typeof ws.pageSize === "number") state.pageSize = ws.pageSize;
-        if (typeof ws.selectedVideoId === "string") detail.videoId = ws.selectedVideoId;
-      };
-
       const openUrl = async (url) => {
         if (!url) return;
         try {
@@ -344,8 +333,7 @@
           setStatus(`請求切換：${mode}...`);
           await host.requestDisplayMode({ mode });
           setStatus("");
-          // 讓 host 有時間更新 displayMode
-          setTimeout(() => { setDisplayAttrs(); setDebug(); syncHeight(); }, 120);
+          setTimeout(syncAfterPaint, 140);
         } catch (e) {
           setStatus(`切換失敗：${e?.message || String(e)}`);
         }
@@ -354,7 +342,7 @@
       const ensurePipIfPossible = async () => {
         if (!supportsDisplayMode) return;
         try { await host.requestDisplayMode({ mode:"pip" }); } catch {}
-        setTimeout(() => { setDisplayAttrs(); setDebug(); syncHeight(); }, 120);
+        setTimeout(syncAfterPaint, 140);
       };
 
       const clearRightPane = () => {
@@ -362,12 +350,12 @@
         detail.item = null;
         detail.videoId = null;
         els.detailView.hidden = true;
-        saveWidgetState();
-        requestAnimationFrame(() => { setDisplayAttrs(); setDebug(); syncHeight(); });
+        syncAfterPaint();
       };
 
       const showDetail = async (item, { tryPip = true } = {}) => {
         if (!item) return;
+
         detail.open = true;
         detail.item = item;
         detail.videoId = item.videoId || null;
@@ -381,16 +369,13 @@
         els.detailFoot.textContent = item.videoId ? `videoId: ${item.videoId}` : "";
 
         els.detailView.hidden = false;
-        saveWidgetState();
-        syncHeightAfterImages();
+        syncAfterImages();
       };
 
       const desiredPageSize = () => (getDisplayMode() === "fullscreen" ? 12 : 3);
       const desiredThumbCount = () => (getDisplayMode() === "fullscreen" ? 6 : 2);
 
       const render = (payload) => {
-        if (!payload) return;
-
         const items = Array.isArray(payload.items) ? payload.items : (payload.item ? [payload.item] : []);
         state.mode = payload.mode || state.mode;
         state.q = payload.q ?? state.q;
@@ -431,7 +416,8 @@
         const onPick = (i) => {
           const item = state.items[i];
           if (!item) return;
-          showDetail(item, { tryPip: true }); // ✅ 不會自動開 YouTube，只更新右欄
+          // ✅ 不自動開 YouTube，只更新右欄
+          showDetail(item, { tryPip: true });
         };
 
         els.gallery.querySelectorAll("[data-i]").forEach(el =>
@@ -441,16 +427,13 @@
           el.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); onPick(Number(el.getAttribute("data-i"))); })
         );
 
-        // 保留右欄：同 videoId 更新內容（避免你覺得「還原」）
+        // 若已選中影片，更新右欄（不再觸發 pip）
         if (detail.videoId) {
           const hit = items.find(x => x?.videoId && x.videoId === detail.videoId);
           if (hit) showDetail(hit, { tryPip: false });
         }
 
-        saveWidgetState();
-        setDisplayAttrs();
-        setDebug();
-        syncHeightAfterImages();
+        syncAfterImages();
       };
 
       const callTool = async (name, args) => {
@@ -459,20 +442,13 @@
         const out = await host.callTool(name, args || {});
         const payload = out?.structuredContent || out;
 
-        // ✅ 只渲染我們的 payload，避免被其他訊息覆蓋回主頁
-        if (isOurPayload(payload)) {
-          render(payload);
-        } else {
-          setStatus("（收到非預期資料，已忽略，避免畫面被覆蓋）");
-          setTimeout(() => setStatus(""), 1200);
-        }
+        if (isOurPayload(payload)) render(payload);
         setStatus("");
       };
 
       // 同步 toolOutput（同一 widget instance）
       let lastSig = "";
       const sigOf = (p) => { try { return JSON.stringify(p); } catch { return String(Math.random()); } };
-
       const syncFromHostToolOutput = () => {
         const payload = getHostPayload();
         if (!isOurPayload(payload)) return;
@@ -542,40 +518,27 @@
       els.btnBack.addEventListener("click", clearRightPane);
 
       window.addEventListener("openai:set_globals", () => {
-        setDisplayAttrs();
-        setDebug();
         syncFromHostToolOutput();
-        syncHeight();
+        syncAfterPaint();
       });
 
-      window.addEventListener("resize", () => requestAnimationFrame(() => { setDisplayAttrs(); setDebug(); syncHeight(); }));
+      window.addEventListener("resize", () => syncAfterPaint());
 
       // Boot
       (async () => {
         try {
-          setDisplayAttrs();
-          setDebug();
-          restoreWidgetState();
+          syncAfterPaint();
 
           const payload = getHostPayload();
-          if (isOurPayload(payload)) {
-            render(payload);
-          } else {
-            // 初次沒有 payload：自動載入清單一次
-            await callTool("list_videos", { cursor: 0, pageSize: desiredPageSize(), sort: "newest" });
-          }
+          if (isOurPayload(payload)) render(payload);
+          else await callTool("list_videos", { cursor: 0, pageSize: desiredPageSize(), sort: "newest" });
 
           // 保底同步（同一 widget instance）
           setInterval(syncFromHostToolOutput, 650);
-
-          // 若之前選過影片，且有 videoId，就等清單回來後會自動 showDetail(hit)
-          if (detail.videoId) {
-            els.detailView.hidden = false;
-          }
         } catch (e) {
           setStatus(e?.message || String(e));
         }
-        requestAnimationFrame(() => { setDisplayAttrs(); setDebug(); syncHeight(); });
+        syncAfterPaint();
       })();
     })();
   </script>
