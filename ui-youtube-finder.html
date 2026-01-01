@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>YouTube Finder UI (Split + Debug)</title>
+  <title>YouTube Finder UI (Inline Drawer + Debug)</title>
 
   <style>
     :root{
@@ -15,18 +15,10 @@
       --btn:#111827;
       --btnText:#fff;
 
-      /* JS 會更新 */
-      --frameH: 360px;
-      --frameW: 640px;
-
-      /* PiP 內容最大寬度（避免太寬看起來被放大） */
-      --pipMaxW: 560px;
-
-      /* 右欄寬度（JS 會依 viewport 調整） */
-      --rightW: 380px;
-
-      /* 右欄高度（JS 動態計算） */
-      --detailH: 260px;
+      --rightW: 380px;     /* sidebar width */
+      --detailH: 260px;    /* sidebar height */
+      --pipMaxW: 560px;    /* pip max width */
+      --drawerW: min(520px, calc(100vw - 48px)); /* inline drawer width */
     }
 
     *{ box-sizing:border-box; }
@@ -37,7 +29,6 @@
       color: var(--text);
     }
 
-    /* ========= Layout ========= */
     #root{ padding:14px; }
 
     .top{
@@ -49,12 +40,7 @@
       margin-bottom:8px;
     }
 
-    .titleRow{
-      display:flex;
-      align-items:center;
-      gap:8px;
-    }
-
+    .titleRow{ display:flex; align-items:center; gap:8px; }
     .title{
       font-size:14px;
       font-weight:900;
@@ -62,7 +48,6 @@
       align-items:center;
       gap:8px;
     }
-
     .badge{
       font-size:11px;
       padding:2px 8px;
@@ -114,6 +99,7 @@
       color:var(--muted);
       margin:6px 0 8px;
     }
+
     .hint{
       font-size:12px;
       color:var(--muted);
@@ -122,35 +108,53 @@
     }
     .hint b{ color:var(--text); }
 
-    .status{
-      font-size:12px;
-      color:var(--muted);
-      margin-top:10px;
-      min-height:16px;
+    /* ===== Debug inline (guaranteed visible) ===== */
+    details.debugDetails{
+      border:1px solid var(--border);
+      border-radius:12px;
+      padding:10px 12px;
+      background:#fff;
+      margin:10px 0 0;
     }
+    details.debugDetails summary{
+      cursor:pointer;
+      user-select:none;
+      font-weight:800;
+      color:var(--text);
+      list-style:none;
+    }
+    details.debugDetails summary::-webkit-details-marker{ display:none; }
+    .mono{
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size:11px;
+      white-space:pre-wrap;
+      word-break:break-word;
+      color:var(--text);
+      margin-top:8px;
+    }
+    .debugRow{
+      border-top:1px solid var(--border);
+      margin-top:8px;
+      padding-top:8px;
+    }
+    .debugActions{ display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; }
+    .debugActions .btn{ height:30px; }
 
-    /* ========= Main grid ========= */
+    /* ===== Main layout ===== */
     .main{
       display:grid;
-      grid-template-columns: 1fr; /* default 單欄 */
+      grid-template-columns: 1fr;
       gap:12px;
       align-items:start;
       min-width:0;
     }
 
-    /* 正常：寬度 >= 860 才兩欄 */
-    @media (min-width: 860px){
-      .main{
-        grid-template-columns: minmax(0,1fr) var(--rightW);
-      }
+    /* fullscreen or wide inline: show right sidebar */
+    body[data-layout="split"] .main{
+      grid-template-columns: minmax(0,1fr) var(--rightW);
     }
 
-    /* ✅ 強制兩欄：不管寬度都兩欄（解你現在問題的關鍵） */
-    body[data-split="on"] .main{
-      grid-template-columns: minmax(0,1fr) var(--rightW) !important;
-    }
-
-    /* ===== Left ===== */
+    /* ===== Left (list) ===== */
     #listView{ min-width:0; }
 
     .gallery{
@@ -204,24 +208,52 @@
       margin-top:10px;
     }
 
-    /* ===== Right ===== */
-    #detailView[hidden]{ display:none !important; }
-    #detailView{ min-width:0; }
-
+    /* ===== Right panel content (shared by sidebar + drawer + pip) ===== */
     .detailCard{
       border:1px solid var(--border);
       border-radius:16px;
-      padding:12px;
       background:#fff;
+      overflow:hidden;
+    }
 
-      /* ✅ 右欄 scrollbar */
+    .detailHeader{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:8px;
+      padding:10px 12px;
+      border-bottom:1px solid var(--border);
+      background:#fff;
+      position:sticky;
+      top:0;
+      z-index:2;
+    }
+    .detailHeaderLeft{
+      display:flex;
+      flex-direction:column;
+      gap:2px;
+      min-width:0;
+    }
+    .detailHeaderTitle{
+      font-weight:900;
+      font-size:13px;
+      white-space:nowrap;
+      overflow:hidden;
+      text-overflow:ellipsis;
+    }
+    .detailHeaderSub{
+      font-size:11px;
+      color:var(--muted);
+      white-space:nowrap;
+      overflow:hidden;
+      text-overflow:ellipsis;
+    }
+
+    .detailBody{
+      padding:12px;
       height: var(--detailH);
-      overflow:auto;
+      overflow:auto;           /* ✅ 右欄用 scrollbar */
       scrollbar-gutter: stable;
-
-      /* 小 UX：右欄置頂 */
-      position: sticky;
-      top: 10px;
     }
 
     .detailHero{
@@ -229,16 +261,19 @@
       border-radius:14px;
       overflow:hidden;
       background:var(--soft);
+      margin-bottom:10px;
     }
     .detailHero img{
       width:100%;
       height:auto;
       display:block;
     }
+
     .detailTitle{
       font-size:16px;
       font-weight:900;
-      margin:10px 0 6px;
+      margin:8px 0 6px;
+      line-height:1.25;
     }
     .detailSub{
       font-size:12px;
@@ -267,11 +302,60 @@
       color:var(--muted);
     }
 
-    /* ========= PiP ========= */
+    /* ===== Sidebar container (split layout) ===== */
+    #detailSidebar[hidden]{ display:none !important; }
+    #detailSidebar{
+      position: sticky;
+      top: 10px;
+      align-self:start;
+      min-width:0;
+    }
+    body[data-layout="split"] #detailSidebar .detailBody{
+      height: var(--detailH);
+    }
+
+    /* ===== Inline narrow: drawer ===== */
+    #drawerBackdrop{
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,.35);
+      z-index: 9998;
+      display:none;
+    }
+    #drawerBackdrop.show{ display:block; }
+
+    #detailDrawer{
+      position: fixed;
+      top: 0;
+      right: 0;
+      height: 100vh;
+      width: var(--drawerW);
+      z-index: 9999;
+      transform: translateX(100%);
+      transition: transform .18s ease;
+      padding: 12px;
+      display:flex;
+      flex-direction:column;
+      gap:10px;
+    }
+    #detailDrawer.show{ transform: translateX(0); }
+
+    #detailDrawer .detailCard{
+      height: calc(100vh - 24px);
+      display:flex;
+      flex-direction:column;
+      overflow:hidden;
+    }
+    #detailDrawer .detailBody{
+      height: auto;
+      flex: 1 1 auto;
+      overflow:auto;
+    }
+
+    /* ===== PiP ===== */
     body[data-display="pip"]{
       overflow:hidden;
     }
-
     body[data-display="pip"] #root{
       position:fixed;
       inset:0;
@@ -281,9 +365,8 @@
       flex-direction:column;
       gap:8px;
     }
-
     body[data-display="pip"] .hint,
-    body[data-display="pip"] .status{
+    body[data-display="pip"] details.debugDetails{
       display:none !important;
     }
 
@@ -302,25 +385,32 @@
       display:block;
       overflow:hidden;
     }
-
     body[data-display="pip"] #listView{ display:none !important; }
+    body[data-display="pip"] #detailSidebar{ display:none !important; }
+    body[data-display="pip"] #drawerBackdrop{ display:none !important; }
+    body[data-display="pip"] #detailDrawer{ display:none !important; }
 
-    body[data-display="pip"] #detailView{
+    /* PiP 直接用專用區塊 */
+    #detailPip[hidden]{ display:none !important; }
+    body[data-display="pip"] #detailPip{
       display:block !important;
-      height:100%;
-      min-height:0;
-      overflow:hidden;
       max-width: var(--pipMaxW);
       margin: 0 auto;
+      height: 100%;
+      min-height:0;
+      overflow:hidden;
     }
-
-    body[data-display="pip"] .detailCard{
-      height:100%;
+    body[data-display="pip"] #detailPip .detailCard{
+      height: 100%;
+      display:flex;
+      flex-direction:column;
+      overflow:hidden;
+    }
+    body[data-display="pip"] #detailPip .detailBody{
+      height:auto;
+      flex: 1 1 auto;
       overflow:auto;
-      position: relative;
-      top: auto;
     }
-
     body[data-display="pip"] .detailHero img{
       height:140px;
       width:100%;
@@ -329,92 +419,16 @@
 
     body[data-display="inline"] #btnInline{ display:none; }
 
-    /* ========= Debug HUD ========= */
-    .dbgBtn{
-      position: fixed;
-      right: 12px;
-      bottom: 12px;
-      z-index: 99998;
-      height: 34px;
-      padding: 0 10px;
-      border-radius: 999px;
-      border: 1px solid var(--border);
-      background: #fff;
-      cursor: pointer;
-      box-shadow: 0 10px 30px rgba(0,0,0,.10);
+    .status{
+      font-size:12px;
+      color:var(--muted);
+      margin-top:10px;
+      min-height:16px;
     }
-
-    .dbg{
-      position: fixed;
-      right: 12px;
-      bottom: 12px;
-      z-index: 99999;
-      width: min(640px, calc(100vw - 24px));
-      border: 1px solid var(--border);
-      border-radius: 14px;
-      background: #fff;
-      box-shadow: 0 10px 30px rgba(0,0,0,.10);
-      overflow: hidden;
-      display: none;
-    }
-    .dbg.show{ display:block; }
-
-    .dbgHead{
-      display:flex;
-      justify-content:space-between;
-      align-items:center;
-      padding: 10px 12px;
-      border-bottom: 1px solid var(--border);
-      font-size: 12px;
-      color: var(--muted);
-      gap: 10px;
-    }
-    .dbgTitle{
-      font-weight: 900;
-      color: var(--text);
-    }
-
-    .dbgBody{
-      padding: 10px 12px;
-      max-height: 360px;
-      overflow: auto;
-      font-size: 12px;
-      color: var(--text);
-    }
-
-    .mono{
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-      font-size: 11px;
-      white-space: pre-wrap;
-      word-break: break-word;
-    }
-
-    .dbgRow{
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 8px;
-      margin-bottom: 8px;
-      background: #fff;
-    }
-
-    .dbgRow b{
-      display:block;
-      color: var(--muted);
-      font-size: 11px;
-      margin-bottom: 6px;
-    }
-
-    .dbgActions{
-      display:flex;
-      flex-wrap:wrap;
-      gap:8px;
-      margin-top:8px;
-    }
-    .dbgActions .btn{ height:30px; }
   </style>
 </head>
 
-<body data-display="inline">
+<body data-display="inline" data-layout="single">
   <div id="root">
     <div class="top" id="topBar">
       <div class="titleRow">
@@ -428,8 +442,6 @@
         <button id="btnLatest" class="btn" type="button">新歌</button>
         <button id="btnReset" class="btn" type="button">清單</button>
 
-        <button id="btnSplit" class="btn" type="button">兩欄:OFF</button>
-
         <button id="btnFs" class="btn" type="button">全螢幕</button>
         <button id="btnPip" class="btn" type="button">PiP</button>
         <button id="btnInline" class="btn" type="button">回Inline</button>
@@ -439,10 +451,8 @@
     </div>
 
     <div class="meta" id="meta"></div>
-
     <div class="hint">
-      如果你點左邊項目後，右欄沒有跑到右側，通常是因為 widget 寬度不足 860px。
-      你可以按「<b>兩欄</b>」強制右欄在右側，並用 Debug 看實際寬度。
+      Inline 寬度不足時，右側資訊欄會改用「右側抽屜」呈現（可關閉）。Fullscreen 或寬度足夠會顯示右側固定欄。
     </div>
 
     <div class="main" id="main">
@@ -456,61 +466,109 @@
         </div>
       </div>
 
-      <!-- Right -->
-      <div id="detailView" hidden>
-        <div class="detailCard" id="detailCard">
-          <div class="detailHero">
-            <img id="detailImg" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" />
+      <!-- Right sidebar (only when layout=split) -->
+      <div id="detailSidebar" hidden>
+        <div class="detailCard">
+          <div class="detailHeader">
+            <div class="detailHeaderLeft">
+              <div class="detailHeaderTitle" id="sbHeaderTitle">右側資訊</div>
+              <div class="detailHeaderSub" id="sbHeaderSub">點選左邊項目顯示</div>
+            </div>
+            <button id="btnCloseSidebar" class="btn" type="button" style="height:30px;">關閉</button>
           </div>
 
-          <div class="detailTitle" id="detailTitle"></div>
-          <div class="detailSub" id="detailSub"></div>
-          <div class="detailText" id="detailText"></div>
+          <div class="detailBody">
+            <div class="detailHero">
+              <img id="detailImg" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" />
+            </div>
+            <div class="detailTitle" id="detailTitle"></div>
+            <div class="detailSub" id="detailSub"></div>
+            <div class="detailText" id="detailText"></div>
 
-          <div class="actions">
-            <button id="btnOpen" class="btn primary" type="button">開啟連結</button>
-            <button id="btnAsk" class="btn" type="button">問 ChatGPT</button>
-            <button id="btnBack" class="btn" type="button">清除右欄</button>
+            <div class="actions">
+              <button id="btnOpen" class="btn primary" type="button">開啟連結</button>
+              <button id="btnAsk" class="btn" type="button">問 ChatGPT</button>
+              <button id="btnBack" class="btn" type="button">清除右欄</button>
+            </div>
+
+            <div class="divider"></div>
+            <div class="detailFoot" id="detailFoot"></div>
           </div>
+        </div>
+      </div>
 
-          <div class="divider"></div>
-          <div class="detailFoot" id="detailFoot"></div>
+      <!-- PiP container -->
+      <div id="detailPip" hidden>
+        <div class="detailCard">
+          <div class="detailHeader">
+            <div class="detailHeaderLeft">
+              <div class="detailHeaderTitle" id="pipHeaderTitle">右側資訊</div>
+              <div class="detailHeaderSub" id="pipHeaderSub">PiP 模式</div>
+            </div>
+            <button id="btnClosePip" class="btn" type="button" style="height:30px;">清除</button>
+          </div>
+          <div class="detailBody" id="pipBody">
+            <!-- reuse same content nodes via JS (renderDetail) -->
+            <div class="detailHero">
+              <img id="pipImg" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" />
+            </div>
+            <div class="detailTitle" id="pipTitle"></div>
+            <div class="detailSub" id="pipSub"></div>
+            <div class="detailText" id="pipText"></div>
+
+            <div class="actions">
+              <button id="pipOpen" class="btn primary" type="button">開啟連結</button>
+              <button id="pipAsk" class="btn" type="button">問 ChatGPT</button>
+              <button id="pipClear" class="btn" type="button">清除</button>
+            </div>
+
+            <div class="divider"></div>
+            <div class="detailFoot" id="pipFoot"></div>
+          </div>
         </div>
       </div>
     </div>
 
+    <details class="debugDetails" id="debugDetails">
+      <summary>🐞 Debug（點開）</summary>
+      <div class="mono" id="dbgText">loading...</div>
+      <div class="debugActions">
+        <button class="btn" id="dbgRefresh" type="button">重新量測</button>
+        <button class="btn" id="dbgCopy" type="button">複製</button>
+      </div>
+    </details>
+
     <div class="status" id="status"></div>
   </div>
 
-  <!-- Debug HUD -->
-  <button class="dbgBtn" id="dbgMini" type="button">🐞</button>
-  <div class="dbg" id="dbg">
-    <div class="dbgHead">
-      <div><span class="dbgTitle">DEBUG</span> <span id="dbgTag"></span></div>
-      <div style="display:flex;gap:8px;align-items:center;">
-        <button class="btn" id="dbgCopy" type="button" style="height:30px;">複製</button>
-        <button class="btn" id="dbgClose" type="button" style="height:30px;">關閉</button>
+  <!-- Inline Drawer -->
+  <div id="drawerBackdrop"></div>
+  <div id="detailDrawer" aria-hidden="true">
+    <div class="detailCard">
+      <div class="detailHeader">
+        <div class="detailHeaderLeft">
+          <div class="detailHeaderTitle" id="dwHeaderTitle">右側資訊</div>
+          <div class="detailHeaderSub" id="dwHeaderSub">Inline 抽屜</div>
+        </div>
+        <button id="btnCloseDrawer" class="btn" type="button" style="height:30px;">關閉</button>
       </div>
-    </div>
-    <div class="dbgBody">
-      <div class="dbgRow">
-        <b>Layout / Mode</b>
-        <div class="mono" id="dbgLayout"></div>
-      </div>
-      <div class="dbgRow">
-        <b>Sizes</b>
-        <div class="mono" id="dbgSizes"></div>
-      </div>
-      <div class="dbgRow">
-        <b>Computed</b>
-        <div class="mono" id="dbgComputed"></div>
-      </div>
-      <div class="dbgRow">
-        <b>Last Tool Output</b>
-        <div class="mono" id="dbgPayload"></div>
-      </div>
-      <div class="dbgActions">
-        <button class="btn" id="dbgRefresh" type="button">重新量測</button>
+
+      <div class="detailBody">
+        <div class="detailHero">
+          <img id="dwImg" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" />
+        </div>
+        <div class="detailTitle" id="dwTitle"></div>
+        <div class="detailSub" id="dwSub"></div>
+        <div class="detailText" id="dwText"></div>
+
+        <div class="actions">
+          <button id="dwOpen" class="btn primary" type="button">開啟連結</button>
+          <button id="dwAsk" class="btn" type="button">問 ChatGPT</button>
+          <button id="dwClear" class="btn" type="button">清除</button>
+        </div>
+
+        <div class="divider"></div>
+        <div class="detailFoot" id="dwFoot"></div>
       </div>
     </div>
   </div>
@@ -524,9 +582,6 @@
         root: $("root"),
         topBar: $("topBar"),
         main: $("main"),
-        listView: $("listView"),
-        detailView: $("detailView"),
-        detailCard: $("detailCard"),
 
         channelTitle: $("channelTitle"),
         modeBadge: $("modeBadge"),
@@ -537,17 +592,21 @@
         btnSearch: $("btnSearch"),
         btnLatest: $("btnLatest"),
         btnReset: $("btnReset"),
-        btnSplit: $("btnSplit"),
         btnFs: $("btnFs"),
         btnPip: $("btnPip"),
         btnInline: $("btnInline"),
-        btnDebug: $("btnDebug"),
         btnPrev: $("btnPrev"),
         btnNext: $("btnNext"),
+        btnDebug: $("btnDebug"),
 
         gallery: $("gallery"),
         links: $("links"),
 
+        // sidebar
+        detailSidebar: $("detailSidebar"),
+        btnCloseSidebar: $("btnCloseSidebar"),
+        sbHeaderTitle: $("sbHeaderTitle"),
+        sbHeaderSub: $("sbHeaderSub"),
         detailImg: $("detailImg"),
         detailTitle: $("detailTitle"),
         detailSub: $("detailSub"),
@@ -557,45 +616,43 @@
         btnAsk: $("btnAsk"),
         btnBack: $("btnBack"),
 
-        dbgMini: $("dbgMini"),
-        dbg: $("dbg"),
-        dbgClose: $("dbgClose"),
-        dbgCopy: $("dbgCopy"),
+        // pip
+        detailPip: $("detailPip"),
+        btnClosePip: $("btnClosePip"),
+        pipImg: $("pipImg"),
+        pipTitle: $("pipTitle"),
+        pipSub: $("pipSub"),
+        pipText: $("pipText"),
+        pipFoot: $("pipFoot"),
+        pipOpen: $("pipOpen"),
+        pipAsk: $("pipAsk"),
+        pipClear: $("pipClear"),
+
+        // drawer
+        drawerBackdrop: $("drawerBackdrop"),
+        detailDrawer: $("detailDrawer"),
+        btnCloseDrawer: $("btnCloseDrawer"),
+        dwImg: $("dwImg"),
+        dwTitle: $("dwTitle"),
+        dwSub: $("dwSub"),
+        dwText: $("dwText"),
+        dwFoot: $("dwFoot"),
+        dwOpen: $("dwOpen"),
+        dwAsk: $("dwAsk"),
+        dwClear: $("dwClear"),
+
+        // debug
+        debugDetails: $("debugDetails"),
+        dbgText: $("dbgText"),
         dbgRefresh: $("dbgRefresh"),
-        dbgTag: $("dbgTag"),
-        dbgLayout: $("dbgLayout"),
-        dbgSizes: $("dbgSizes"),
-        dbgComputed: $("dbgComputed"),
-        dbgPayload: $("dbgPayload"),
+        dbgCopy: $("dbgCopy"),
       };
 
       const supportsDisplayMode = typeof host?.requestDisplayMode === "function";
       const getDisplayMode = () => host?.displayMode || "inline";
       const setStatus = (t="") => { els.status.textContent = t; };
 
-      const esc = (s="") => String(s).replace(/[&<>"']/g, c => ({
-        "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"
-      }[c]));
-
-      // ===== Split toggle (force two columns) =====
-      const SPLIT_KEY = "ytfinder_force_split";
-      let forceSplit = localStorage.getItem(SPLIT_KEY) === "1";
-
-      const applySplit = () => {
-        const dm = getDisplayMode();
-        if (forceSplit && dm !== "pip") document.body.setAttribute("data-split", "on");
-        else document.body.removeAttribute("data-split");
-        els.btnSplit.textContent = `兩欄:${(forceSplit && dm !== "pip") ? "ON" : "OFF"}`;
-      };
-
-      els.btnSplit.addEventListener("click", () => {
-        forceSplit = !forceSplit;
-        localStorage.setItem(SPLIT_KEY, forceSplit ? "1" : "0");
-        applySplit();
-        syncAfterPaint();
-      });
-
-      // ===== payload filter =====
+      // payload filter
       const allowedModes = new Set(["list_videos","search_videos","latest_song"]);
       const looksLikeVideo = (v) => !!(v && typeof v === "object" && typeof v.title === "string" && (v.url || v.videoId || v.thumbnailUrl));
       const isOurPayload = (p) => {
@@ -612,39 +669,72 @@
         return out?.structuredContent || out;
       };
 
-      // ===== Heights / CSS vars =====
+      const safeJson = (v) => { try { return JSON.stringify(v); } catch { return String(v); } };
+
+      // ===== layout decision =====
+      // split when:
+      // - displayMode=fullscreen OR
+      // - viewport wide enough (>= 980), because ChatGPT inline often < 860
+      // otherwise use drawer for inline
+      const computeLayout = () => {
+        const dm = getDisplayMode();
+        if (dm === "pip") return "pip";
+        if (dm === "fullscreen") return "split";
+        return (window.innerWidth >= 980) ? "split" : "drawer";
+      };
+
       const updateCssVars = () => {
         const vw = Math.max(320, Math.floor(window.innerWidth || 0));
         const vh = Math.max(200, Math.floor(window.innerHeight || 0));
-        document.documentElement.style.setProperty("--frameW", `${vw}px`);
-        document.documentElement.style.setProperty("--frameH", `${vh}px`);
 
-        // right width: 30~40% of viewport, clamp to [280..420]
-        const rightW = Math.max(280, Math.min(420, Math.floor(vw * 0.32)));
+        // sidebar width: clamp 300..420
+        const rightW = Math.max(300, Math.min(420, Math.floor(vw * 0.28)));
         document.documentElement.style.setProperty("--rightW", `${rightW}px`);
 
         // pip max width
         const pipMaxW = Math.min(560, vw - 20);
         document.documentElement.style.setProperty("--pipMaxW", `${pipMaxW}px`);
 
-        // detail height = viewport - topBar - paddings
-        const dm = getDisplayMode();
+        // sidebar body height = viewport - topbar - paddings (good enough; host clamps anyway)
         const rootStyle = getComputedStyle(els.root);
         const padTop = parseFloat(rootStyle.paddingTop || "0") || 0;
         const padBot = parseFloat(rootStyle.paddingBottom || "0") || 0;
         const topH = Math.ceil(els.topBar.getBoundingClientRect().height);
-        let detailH = vh - padTop - padBot - topH - 8; // 8: gap
-        detailH = Math.max(160, Math.floor(detailH));
-        if (dm === "fullscreen") detailH = Math.max(detailH, 320);
+        let detailH = vh - padTop - padBot - topH - 18; // some gap
+        detailH = Math.max(180, Math.floor(detailH));
+        if (getDisplayMode() === "fullscreen") detailH = Math.max(detailH, 360);
         document.documentElement.style.setProperty("--detailH", `${detailH}px`);
       };
 
-      const setDisplayAttrs = () => {
+      const applyModeLayout = () => {
         const dm = getDisplayMode();
         document.body.setAttribute("data-display", dm);
         els.modeBadge.textContent = dm;
-        applySplit();
+
+        const layout = computeLayout();
+        document.body.setAttribute("data-layout", layout);
+
+        // show/hide containers
+        const hasDetail = !!detail.item;
+        if (layout === "split") {
+          els.detailPip.hidden = true;
+          hideDrawer(false);
+          // sidebar shows only if hasDetail
+          els.detailSidebar.hidden = !hasDetail;
+        } else if (layout === "drawer") {
+          els.detailPip.hidden = true;
+          els.detailSidebar.hidden = true;
+          // drawer auto open if hasDetail
+          if (hasDetail) showDrawer();
+          else hideDrawer(false);
+        } else { // pip
+          els.detailSidebar.hidden = true;
+          hideDrawer(false);
+          els.detailPip.hidden = !hasDetail;
+        }
+
         updateCssVars();
+        refreshDebug();
       };
 
       const notifyHeight = () => {
@@ -657,9 +747,8 @@
 
       const syncAfterPaint = () => {
         requestAnimationFrame(() => {
-          setDisplayAttrs();
+          applyModeLayout();
           notifyHeight();
-          refreshDebug();
         });
       };
 
@@ -672,6 +761,24 @@
         } catch {}
         syncAfterPaint();
       };
+
+      // ===== drawer controls =====
+      const showDrawer = () => {
+        els.drawerBackdrop.classList.add("show");
+        els.detailDrawer.classList.add("show");
+        els.detailDrawer.setAttribute("aria-hidden", "false");
+      };
+      const hideDrawer = (alsoClear = false) => {
+        els.drawerBackdrop.classList.remove("show");
+        els.detailDrawer.classList.remove("show");
+        els.detailDrawer.setAttribute("aria-hidden", "true");
+        if (alsoClear) clearDetail();
+      };
+
+      els.drawerBackdrop.addEventListener("click", () => hideDrawer(false));
+      els.btnCloseDrawer.addEventListener("click", () => hideDrawer(false));
+      els.btnCloseSidebar.addEventListener("click", () => { clearDetail(); });
+      els.btnClosePip.addEventListener("click", () => { clearDetail(); });
 
       // ===== State =====
       let state = {
@@ -686,7 +793,7 @@
         items:[]
       };
 
-      let detail = { videoId:null, item:null };
+      let detail = { item:null, videoId:null };
 
       const openUrl = async (url) => {
         if (!url) return;
@@ -704,34 +811,80 @@
           setStatus(`切換：${mode}...`);
           await host.requestDisplayMode({ mode });
           setStatus("");
-          setTimeout(syncAfterPaint, 140);
+          setTimeout(syncAfterPaint, 160);
         } catch (e) {
           setStatus(`切換失敗：${e?.message || String(e)}`);
         }
       };
 
-      const clearRightPane = () => {
-        detail.videoId = null;
+      const clearDetail = () => {
         detail.item = null;
-        els.detailView.hidden = true;
+        detail.videoId = null;
+        // hide sidebar/drawer/pip
+        els.detailSidebar.hidden = true;
+        els.detailPip.hidden = true;
+        hideDrawer(false);
         syncAfterPaint();
       };
 
-      // ✅ showDetail：不自動切 PiP（保持 inline 時右欄在右邊）
+      // render detail into sidebar + drawer + pip (same content)
+      const renderDetail = (item) => {
+        const title = item?.title || "";
+        const sub = item?.publishedAt ? `上架：${String(item.publishedAt).slice(0,10)}` : "";
+        const desc = (item?.description || "").trim() || "（無說明）";
+        const thumb = item?.thumbnailUrl || "";
+        const foot = item?.videoId ? `videoId: ${item.videoId}` : "";
+
+        // sidebar
+        els.sbHeaderTitle.textContent = title || "右側資訊";
+        els.sbHeaderSub.textContent = sub || " ";
+        els.detailImg.src = thumb;
+        els.detailTitle.textContent = title;
+        els.detailSub.textContent = sub;
+        els.detailText.textContent = desc;
+        els.detailFoot.textContent = foot;
+
+        // drawer
+        els.dwImg.src = thumb;
+        els.dwTitle.textContent = title;
+        els.dwSub.textContent = sub;
+        els.dwText.textContent = desc;
+        els.dwFoot.textContent = foot;
+
+        // pip
+        els.pipImg.src = thumb;
+        els.pipTitle.textContent = title;
+        els.pipSub.textContent = sub;
+        els.pipText.textContent = desc;
+        els.pipFoot.textContent = foot;
+
+        syncAfterImages();
+      };
+
       const showDetail = async (item) => {
         if (!item) return;
-
         detail.item = item;
         detail.videoId = item.videoId || null;
 
-        els.detailTitle.textContent = item.title || "";
-        els.detailSub.textContent = item.publishedAt ? `上架：${String(item.publishedAt).slice(0,10)}` : "";
-        els.detailImg.src = item.thumbnailUrl || "";
-        els.detailText.textContent = (item.description || "").trim() || "（無說明）";
-        els.detailFoot.textContent = item.videoId ? `videoId: ${item.videoId}` : "";
+        renderDetail(item);
 
-        els.detailView.hidden = false;
-        syncAfterImages();
+        // decide container by layout
+        const layout = computeLayout();
+        if (layout === "split") {
+          els.detailSidebar.hidden = false;
+          hideDrawer(false);
+          els.detailPip.hidden = true;
+        } else if (layout === "drawer") {
+          els.detailSidebar.hidden = true;
+          els.detailPip.hidden = true;
+          showDrawer();
+        } else { // pip
+          els.detailPip.hidden = false;
+          els.detailSidebar.hidden = true;
+          hideDrawer(false);
+        }
+
+        syncAfterPaint();
       };
 
       const desiredPageSize = () => (getDisplayMode() === "fullscreen" ? 12 : 3);
@@ -752,7 +905,7 @@
         els.channelTitle.textContent = `🎧 ${state.channelTitle}`;
 
         if (state.mode === "search_videos") {
-          els.meta.innerHTML = `搜尋：<b>${esc(state.q || "")}</b>　結果：${state.totalMatches ?? items.length}`;
+          els.meta.innerHTML = `搜尋：<b>${state.q || ""}</b>　結果：${state.totalMatches ?? items.length}`;
         } else if (state.mode === "latest_song") {
           els.meta.textContent = "最新一首";
         } else {
@@ -764,20 +917,21 @@
 
         const thumbs = items.slice(0, desiredThumbCount());
         els.gallery.innerHTML = thumbs.length ? thumbs.map((v, idx) => `
-          <button class="thumbBtn" data-i="${idx}" type="button" title="${esc(v.title || "")}">
+          <button class="thumbBtn" data-i="${idx}" type="button" title="${(v.title||"").replace(/"/g,'&quot;')}">
             <div class="thumbBox">
-              <img src="${esc(v.thumbnailUrl || "")}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" />
+              <img src="${(v.thumbnailUrl||"").replace(/"/g,'&quot;')}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" />
             </div>
           </button>
         `).join("") : `<div class="meta">（沒有縮圖）</div>`;
 
         els.links.innerHTML = items.length
-          ? items.map((v, i) => `<li><button class="linkBtn" data-i="${i}" type="button">${esc(v.title || "")}</button></li>`).join("")
+          ? items.map((v, i) => `<li><button class="linkBtn" data-i="${i}" type="button">${(v.title||"")}</button></li>`).join("")
           : "";
 
         const onPick = (i) => {
           const item = state.items[i];
           if (!item) return;
+          // ✅ 不跳 YouTube、不自動切 PiP，只顯示右側（sidebar 或 drawer）
           showDetail(item);
         };
 
@@ -788,16 +942,15 @@
           el.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); onPick(Number(el.getAttribute("data-i"))); })
         );
 
-        // pip：若沒選過影片，預設第一筆避免空白
-        if (getDisplayMode() === "pip" && !detail.videoId && items.length) {
-          showDetail(items[0]);
-          return;
-        }
-
-        // 已選中影片 -> 更新右欄
+        // keep detail synced if same video exists in new list
         if (detail.videoId) {
           const hit = items.find(x => x?.videoId && x.videoId === detail.videoId);
-          if (hit) showDetail(hit);
+          if (hit) renderDetail(hit);
+        }
+
+        // pip: if enter pip without detail, pick first
+        if (getDisplayMode() === "pip" && !detail.videoId && items.length) {
+          showDetail(items[0]);
         }
 
         syncAfterPaint();
@@ -812,13 +965,12 @@
         setStatus("");
       };
 
-      // 同步 toolOutput：減少「ChatGPT 更新但 widget 不更新」
+      // toolOutput sync
       let lastSig = "";
-      const sigOf = (p) => { try { return JSON.stringify(p); } catch { return String(Math.random()); } };
       const syncFromHostToolOutput = () => {
         const payload = getHostPayload();
         if (!isOurPayload(payload)) return;
-        const sig = sigOf(payload);
+        const sig = safeJson(payload);
         if (sig === lastSig) return;
         lastSig = sig;
         render(payload);
@@ -874,8 +1026,8 @@
         } catch (e) { setStatus(e?.message || String(e)); }
       });
 
-      // Right actions
-      els.btnOpen.addEventListener("click", () => { if (detail?.item?.url) openUrl(detail.item.url); });
+      // detail actions: sidebar
+      els.btnOpen.addEventListener("click", () => openUrl(detail?.item?.url));
       els.btnAsk.addEventListener("click", async () => {
         const t = detail?.item?.title || "";
         const msg = t ? `用繁體中文簡短介紹這支影片：${t}\n請整理 3-5 個重點。` : "簡短介紹這個內容。";
@@ -884,58 +1036,96 @@
           else setStatus("host.sendFollowUpMessage 不存在");
         } catch (e) { setStatus(e?.message || String(e)); }
       });
-      els.btnBack.addEventListener("click", clearRightPane);
+      els.btnBack.addEventListener("click", clearDetail);
 
-      // ===== Debug HUD =====
-      const showDbg = () => { els.dbg.classList.add("show"); refreshDebug(); };
-      const hideDbg = () => { els.dbg.classList.remove("show"); };
+      // drawer actions
+      els.dwOpen.addEventListener("click", () => openUrl(detail?.item?.url));
+      els.dwAsk.addEventListener("click", async () => {
+        const t = detail?.item?.title || "";
+        const msg = t ? `用繁體中文簡短介紹這支影片：${t}\n請整理 3-5 個重點。` : "簡短介紹這個內容。";
+        try {
+          if (host?.sendFollowUpMessage) await host.sendFollowUpMessage({ prompt: msg });
+          else setStatus("host.sendFollowUpMessage 不存在");
+        } catch (e) { setStatus(e?.message || String(e)); }
+      });
+      els.dwClear.addEventListener("click", () => hideDrawer(true));
 
-      els.dbgMini.addEventListener("click", showDbg);
-      els.btnDebug.addEventListener("click", showDbg);
-      els.dbgClose.addEventListener("click", hideDbg);
-      els.dbgRefresh.addEventListener("click", refreshDebug);
+      // pip actions
+      els.pipOpen.addEventListener("click", () => openUrl(detail?.item?.url));
+      els.pipAsk.addEventListener("click", async () => {
+        const t = detail?.item?.title || "";
+        const msg = t ? `用繁體中文簡短介紹這支影片：${t}\n請整理 3-5 個重點。` : "簡短介紹這個內容。";
+        try {
+          if (host?.sendFollowUpMessage) await host.sendFollowUpMessage({ prompt: msg });
+          else setStatus("host.sendFollowUpMessage 不存在");
+        } catch (e) { setStatus(e?.message || String(e)); }
+      });
+      els.pipClear.addEventListener("click", clearDetail);
 
+      // ===== Debug =====
       const refreshDebug = () => {
         const dm = getDisplayMode();
-        const mm = window.matchMedia("(min-width: 860px)").matches;
+        const layout = computeLayout();
         const rootRect = els.root.getBoundingClientRect();
         const mainCols = getComputedStyle(els.main).gridTemplateColumns;
-        const listDisp = getComputedStyle(els.listView).display;
-        const detailDisp = getComputedStyle(els.detailView).display;
+        const sidebarHidden = els.detailSidebar.hidden;
+        const pipHidden = els.detailPip.hidden;
+        const drawerOpen = els.detailDrawer.classList.contains("show");
 
-        const rightW = getComputedStyle(document.documentElement).getPropertyValue("--rightW").trim();
-        const detailH = getComputedStyle(document.documentElement).getPropertyValue("--detailH").trim();
-
+        const cssRightW = getComputedStyle(document.documentElement).getPropertyValue("--rightW").trim();
+        const cssDetailH = getComputedStyle(document.documentElement).getPropertyValue("--detailH").trim();
         const mh = (typeof host?.maxHeight === "number") ? host.maxHeight : null;
 
-        els.dbgTag.textContent = `(${dm}${document.body.getAttribute("data-split")==="on" ? ", split" : ""})`;
-
-        els.dbgLayout.textContent =
-          `displayMode: ${dm}\nrequestDisplayMode: ${supportsDisplayMode ? "yes" : "no"}\nforceSplit(data-split): ${document.body.getAttribute("data-split") || "off"}\nmatchMedia(min-width:860): ${mm}\nmain grid-template-columns: ${mainCols}\n#listView display: ${listDisp}\n#detailView display: ${detailDisp}`;
-
-        els.dbgSizes.textContent =
-          `viewport(inner): ${window.innerWidth}x${window.innerHeight}\nrootRect: ${Math.round(rootRect.width)}x${Math.round(rootRect.height)}\nhost.maxHeight: ${mh ?? "n/a"}\nCSS --rightW: ${rightW}\nCSS --detailH: ${detailH}`;
-
         const payload = getHostPayload();
-        if (payload && typeof payload === "object") {
-          const items = Array.isArray(payload.items) ? payload.items : (payload.item ? [payload.item] : []);
-          els.dbgPayload.textContent =
-            `isOurPayload: ${isOurPayload(payload)}\nmode: ${payload.mode ?? "-"}\nq: ${payload.q ?? "-"}\nitems: ${items.length}\nnextCursor: ${payload.nextCursor ?? "-"}\nchannelTitle: ${payload.channelTitle ?? "-"}`;
-        } else {
-          els.dbgPayload.textContent = `toolOutput: ${payload ? String(payload) : "null"}`;
-        }
+        const items = (payload && Array.isArray(payload.items)) ? payload.items.length : (payload && payload.item ? 1 : 0);
 
-        els.dbgComputed.textContent =
-          `bodyCH/bodySH: ${document.body.clientHeight}/${document.body.scrollHeight}\n` +
-          `deCH/deSH: ${document.documentElement.clientHeight}/${document.documentElement.scrollHeight}`;
+        els.dbgText.textContent =
+`Host / Mode
+displayMode: ${dm}
+requestDisplayMode: ${supportsDisplayMode ? "yes" : "no"}
+layout(computeLayout): ${layout}
+host.maxHeight: ${mh ?? "n/a"}
+
+Viewport / Root
+viewport(inner): ${window.innerWidth}x${window.innerHeight}
+rootRect: ${Math.round(rootRect.width)}x${Math.round(rootRect.height)}
+main grid-template-columns: ${mainCols}
+
+Panels
+sidebarHidden: ${sidebarHidden}
+drawerOpen: ${drawerOpen}
+pipHidden: ${pipHidden}
+hasDetail: ${!!detail.item}
+
+CSS vars
+--rightW: ${cssRightW}
+--detailH: ${cssDetailH}
+
+Heights
+bodyCH/bodySH: ${document.body.clientHeight}/${document.body.scrollHeight}
+deCH/deSH: ${document.documentElement.clientHeight}/${document.documentElement.scrollHeight}
+
+Last Tool Output
+isOurPayload: ${isOurPayload(payload)}
+mode: ${payload?.mode ?? "-"}
+q: ${payload?.q ?? "-"}
+items: ${items}
+nextCursor: ${payload?.nextCursor ?? "-"}
+channelTitle: ${payload?.channelTitle ?? "-"}`;
       };
 
+      els.btnDebug.addEventListener("click", () => {
+        // 打開 details
+        els.debugDetails.open = true;
+        refreshDebug();
+        els.debugDetails.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      });
+
+      els.dbgRefresh.addEventListener("click", refreshDebug);
       els.dbgCopy.addEventListener("click", async () => {
         refreshDebug();
-        const text =
-          `Layout/Mode\n${els.dbgLayout.textContent}\n\nSizes\n${els.dbgSizes.textContent}\n\nComputed\n${els.dbgComputed.textContent}\n\nLast Tool Output\n${els.dbgPayload.textContent}`;
         try {
-          await navigator.clipboard.writeText(text);
+          await navigator.clipboard.writeText(els.dbgText.textContent);
           setStatus("已複製 debug");
           setTimeout(()=>setStatus(""), 1200);
         } catch {
@@ -956,8 +1146,7 @@
 
       // ===== Boot =====
       (async () => {
-        setDisplayAttrs();
-
+        applyModeLayout();
         try {
           const payload = getHostPayload();
           if (isOurPayload(payload)) render(payload);
@@ -967,7 +1156,7 @@
         }
 
         setInterval(syncFromHostToolOutput, 650);
-        setInterval(updateCssVars, 900);
+        setInterval(() => { updateCssVars(); refreshDebug(); }, 1200);
       })();
     })();
   </script>
