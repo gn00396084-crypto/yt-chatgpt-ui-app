@@ -132,11 +132,6 @@
       color:var(--text);
       margin-top:8px;
     }
-    .debugRow{
-      border-top:1px solid var(--border);
-      margin-top:8px;
-      padding-top:8px;
-    }
     .debugActions{ display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; }
     .debugActions .btn{ height:30px; }
 
@@ -477,7 +472,7 @@
             <button id="btnCloseSidebar" class="btn" type="button" style="height:30px;">關閉</button>
           </div>
 
-          <div class="detailBody">
+          <div class="detailBody" id="sbBody">
             <div class="detailHero">
               <img id="detailImg" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" />
             </div>
@@ -508,7 +503,6 @@
             <button id="btnClosePip" class="btn" type="button" style="height:30px;">清除</button>
           </div>
           <div class="detailBody" id="pipBody">
-            <!-- reuse same content nodes via JS (renderDetail) -->
             <div class="detailHero">
               <img id="pipImg" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" />
             </div>
@@ -553,7 +547,7 @@
         <button id="btnCloseDrawer" class="btn" type="button" style="height:30px;">關閉</button>
       </div>
 
-      <div class="detailBody">
+      <div class="detailBody" id="dwBody">
         <div class="detailHero">
           <img id="dwImg" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" />
         </div>
@@ -607,6 +601,7 @@
         btnCloseSidebar: $("btnCloseSidebar"),
         sbHeaderTitle: $("sbHeaderTitle"),
         sbHeaderSub: $("sbHeaderSub"),
+        sbBody: $("sbBody"),
         detailImg: $("detailImg"),
         detailTitle: $("detailTitle"),
         detailSub: $("detailSub"),
@@ -619,6 +614,7 @@
         // pip
         detailPip: $("detailPip"),
         btnClosePip: $("btnClosePip"),
+        pipBody: $("pipBody"),
         pipImg: $("pipImg"),
         pipTitle: $("pipTitle"),
         pipSub: $("pipSub"),
@@ -632,6 +628,7 @@
         drawerBackdrop: $("drawerBackdrop"),
         detailDrawer: $("detailDrawer"),
         btnCloseDrawer: $("btnCloseDrawer"),
+        dwBody: $("dwBody"),
         dwImg: $("dwImg"),
         dwTitle: $("dwTitle"),
         dwSub: $("dwSub"),
@@ -672,10 +669,6 @@
       const safeJson = (v) => { try { return JSON.stringify(v); } catch { return String(v); } };
 
       // ===== layout decision =====
-      // split when:
-      // - displayMode=fullscreen OR
-      // - viewport wide enough (>= 980), because ChatGPT inline often < 860
-      // otherwise use drawer for inline
       const computeLayout = () => {
         const dm = getDisplayMode();
         if (dm === "pip") return "pip";
@@ -687,20 +680,17 @@
         const vw = Math.max(320, Math.floor(window.innerWidth || 0));
         const vh = Math.max(200, Math.floor(window.innerHeight || 0));
 
-        // sidebar width: clamp 300..420
         const rightW = Math.max(300, Math.min(420, Math.floor(vw * 0.28)));
         document.documentElement.style.setProperty("--rightW", `${rightW}px`);
 
-        // pip max width
         const pipMaxW = Math.min(560, vw - 20);
         document.documentElement.style.setProperty("--pipMaxW", `${pipMaxW}px`);
 
-        // sidebar body height = viewport - topbar - paddings (good enough; host clamps anyway)
         const rootStyle = getComputedStyle(els.root);
         const padTop = parseFloat(rootStyle.paddingTop || "0") || 0;
         const padBot = parseFloat(rootStyle.paddingBottom || "0") || 0;
         const topH = Math.ceil(els.topBar.getBoundingClientRect().height);
-        let detailH = vh - padTop - padBot - topH - 18; // some gap
+        let detailH = vh - padTop - padBot - topH - 18;
         detailH = Math.max(180, Math.floor(detailH));
         if (getDisplayMode() === "fullscreen") detailH = Math.max(detailH, 360);
         document.documentElement.style.setProperty("--detailH", `${detailH}px`);
@@ -714,20 +704,17 @@
         const layout = computeLayout();
         document.body.setAttribute("data-layout", layout);
 
-        // show/hide containers
         const hasDetail = !!detail.item;
         if (layout === "split") {
           els.detailPip.hidden = true;
           hideDrawer(false);
-          // sidebar shows only if hasDetail
           els.detailSidebar.hidden = !hasDetail;
         } else if (layout === "drawer") {
           els.detailPip.hidden = true;
           els.detailSidebar.hidden = true;
-          // drawer auto open if hasDetail
           if (hasDetail) showDrawer();
           else hideDrawer(false);
-        } else { // pip
+        } else {
           els.detailSidebar.hidden = true;
           hideDrawer(false);
           els.detailPip.hidden = !hasDetail;
@@ -820,14 +807,20 @@
       const clearDetail = () => {
         detail.item = null;
         detail.videoId = null;
-        // hide sidebar/drawer/pip
         els.detailSidebar.hidden = true;
         els.detailPip.hidden = true;
         hideDrawer(false);
         syncAfterPaint();
       };
 
-      // render detail into sidebar + drawer + pip (same content)
+      // ✅ 新增：每次換內容都把捲動置頂（抽屜/右欄/PiP）
+      const resetDetailScrollTop = () => {
+        [els.sbBody, els.dwBody, els.pipBody].forEach(el => {
+          if (!el) return;
+          try { el.scrollTop = 0; } catch {}
+        });
+      };
+
       const renderDetail = (item) => {
         const title = item?.title || "";
         const sub = item?.publishedAt ? `上架：${String(item.publishedAt).slice(0,10)}` : "";
@@ -858,6 +851,9 @@
         els.pipText.textContent = desc;
         els.pipFoot.textContent = foot;
 
+        // ✅ 立刻置頂（避免點第2個項目時停在中間）
+        resetDetailScrollTop();
+
         syncAfterImages();
       };
 
@@ -868,7 +864,6 @@
 
         renderDetail(item);
 
-        // decide container by layout
         const layout = computeLayout();
         if (layout === "split") {
           els.detailSidebar.hidden = false;
@@ -878,11 +873,14 @@
           els.detailSidebar.hidden = true;
           els.detailPip.hidden = true;
           showDrawer();
-        } else { // pip
+        } else {
           els.detailPip.hidden = false;
           els.detailSidebar.hidden = true;
           hideDrawer(false);
         }
+
+        // ✅ 再做一次置頂（確保 drawer 顯示後也在頂部）
+        resetDetailScrollTop();
 
         syncAfterPaint();
       };
@@ -931,7 +929,6 @@
         const onPick = (i) => {
           const item = state.items[i];
           if (!item) return;
-          // ✅ 不跳 YouTube、不自動切 PiP，只顯示右側（sidebar 或 drawer）
           showDetail(item);
         };
 
@@ -942,13 +939,11 @@
           el.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); onPick(Number(el.getAttribute("data-i"))); })
         );
 
-        // keep detail synced if same video exists in new list
         if (detail.videoId) {
           const hit = items.find(x => x?.videoId && x.videoId === detail.videoId);
           if (hit) renderDetail(hit);
         }
 
-        // pip: if enter pip without detail, pick first
         if (getDisplayMode() === "pip" && !detail.videoId && items.length) {
           showDetail(items[0]);
         }
@@ -1115,7 +1110,6 @@ channelTitle: ${payload?.channelTitle ?? "-"}`;
       };
 
       els.btnDebug.addEventListener("click", () => {
-        // 打開 details
         els.debugDetails.open = true;
         refreshDebug();
         els.debugDetails.scrollIntoView({ block: "nearest", behavior: "smooth" });
