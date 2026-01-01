@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>YouTube Finder UI v6</title>
+  <title>YouTube Finder UI</title>
   <style>
     :root{
       --bg:#fff;--text:#111827;--muted:#6b7280;--border:#e5e7eb;--soft:#f3f4f6;
@@ -11,9 +11,10 @@
     }
     body{margin:0;font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto;background:var(--bg);color:var(--text)}
     .wrap{padding:14px}
+
     .top{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-bottom:8px}
     .titleRow{display:flex;align-items:center;gap:8px}
-    .title{font-size:14px;font-weight:700;display:flex;gap:8px;align-items:center}
+    .title{font-size:14px;font-weight:800;display:flex;gap:8px;align-items:center}
     .badge{font-size:11px;padding:2px 8px;border-radius:999px;border:1px solid var(--border);color:var(--muted);background:#fff}
 
     .controls{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
@@ -23,7 +24,7 @@
     }
     input::placeholder{color:#9ca3af}
 
-    /* ✅ 只給「一般按鈕」用，避免影響縮圖 button */
+    /* 一般按鈕 */
     .btn{
       height:34px;
       padding:0 10px;
@@ -38,21 +39,22 @@
     .btn:disabled{opacity:.5;cursor:not-allowed}
 
     .debug{font-size:11px;color:var(--muted);margin:0 0 8px}
-    .meta{font-size:12px;color:var(--muted);margin:6px 0 10px}
+    .meta{font-size:12px;color:var(--muted);margin:6px 0 8px}
+    .hint{font-size:12px;color:var(--muted);margin:0 0 10px;line-height:1.45}
+    .hint b{color:var(--text)}
 
-    /* ✅ 主區：清單 + 資訊欄（寬度夠就雙欄；唔一定要 fullscreen） */
     .main{
       display:grid;
       grid-template-columns: 1fr;
       gap:12px;
       align-items:start;
     }
-    @media (min-width: 860px) {
+    /* 寬度夠就左右雙欄（不依賴 fullscreen） */
+    @media (min-width: 860px){
       .main{ grid-template-columns: minmax(0,1fr) 380px; }
       .detailCard{ position:sticky; top:12px; max-height:calc(100vh - 24px); overflow:auto; }
     }
 
-    /* ✅ 縮圖：不再被 34px 壓扁 */
     .gallery{
       display:grid;
       grid-template-columns:repeat(2,minmax(0,1fr));
@@ -60,7 +62,7 @@
       margin-bottom:10px;
     }
     .thumbBtn{
-      height:auto;              /* ✅ 關鍵：不要固定高度 */
+      height:auto;
       border:1px solid var(--border);
       background:#fff;
       padding:0;
@@ -75,7 +77,7 @@
     .links{margin:0 0 8px 18px;padding:0}
     .links li{margin:6px 0}
 
-    /* ✅ 不用 <a>，避免點擊被環境導去外部頁 */
+    /* ✅ 不用 <a>，避免被 host/瀏覽器導頁 */
     .linkBtn{
       background:none;border:none;padding:0;font:inherit;
       color:var(--text);
@@ -87,7 +89,7 @@
     .pager{display:flex;gap:8px;justify-content:flex-end;margin-top:10px}
     .status{font-size:12px;color:var(--muted);margin-top:10px;min-height:16px}
 
-    /* ✅ 右側資訊欄 */
+    /* 右欄 */
     #detailView[hidden]{display:none !important;}
     .detailCard{
       border:1px solid var(--border);
@@ -102,14 +104,14 @@
       background:var(--soft);
     }
     .detailHero img{width:100%;height:auto;display:block}
-    .detailTitle{font-size:16px;font-weight:800;margin:10px 0 6px}
+    .detailTitle{font-size:16px;font-weight:900;margin:10px 0 6px}
     .detailSub{font-size:12px;color:var(--muted);margin-bottom:10px}
     .detailText{font-size:13px;line-height:1.55;color:var(--text);white-space:pre-wrap}
     .actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
     .divider{height:1px;background:var(--border);margin:12px 0}
 
-    /* ✅ pip 模式：只顯示右欄（清單隱藏） */
-    body[data-display="pip"] #listView{display:none !important;}
+    /* inline 下也可用（但保持簡潔） */
+    body[data-display="inline"] #btnInline{display:none}
   </style>
 </head>
 
@@ -118,7 +120,7 @@
     <div class="top">
       <div class="titleRow">
         <div class="title" id="channelTitle">🎧 YouTube Finder</div>
-        <span class="badge" id="modeBadge">UI v6</span>
+        <span class="badge" id="modeBadge">inline</span>
       </div>
 
       <div class="controls">
@@ -135,6 +137,9 @@
 
     <div class="debug" id="debug"></div>
     <div class="meta" id="meta"></div>
+    <div class="hint" id="hint">
+      提示：若你在<b>主聊天輸入框</b>提問，ChatGPT 可能會產生<b>新的 widget</b>；要讓同一個 widget 持續同步更新，請用上方<b>搜尋/新歌/清單</b>按鈕，或用右欄<b>問 ChatGPT</b>發起後續。
+    </div>
 
     <div class="main" id="main">
       <!-- Left list -->
@@ -184,6 +189,7 @@
         modeBadge: $("modeBadge"),
         debug: $("debug"),
         meta: $("meta"),
+        hint: $("hint"),
         gallery: $("gallery"),
         links: $("links"),
         status: $("status"),
@@ -208,29 +214,20 @@
         btnBack: $("btnBack"),
       };
 
-      let state = {
-        mode:"list_videos", q:"", cursor:0, pageSize:3, nextCursor:null,
-        total:null, totalMatches:null, items:[]
-      };
-
-      let detail = { open:false, item:null };
+      const supportsDisplayMode = typeof host?.requestDisplayMode === "function";
+      const getDisplayMode = () => host?.displayMode || "inline";
 
       const esc = (s="") => String(s).replace(/[&<>"']/g, c => ({
         "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"
       }[c]));
-      const setStatus = (t="") => { els.status.textContent = t; };
 
-      const supportsDisplayMode = typeof host?.requestDisplayMode === "function";
-      const getDisplayMode = () => host?.displayMode || "inline";
+      const setStatus = (t="") => { els.status.textContent = t; };
 
       const setDisplayAttrs = () => {
         const dm = getDisplayMode();
         document.body.setAttribute("data-display", dm);
-        els.modeBadge.textContent = `UI v6 · ${dm}`;
+        els.modeBadge.textContent = dm;
       };
-
-      const desiredPageSize = () => (getDisplayMode() === "fullscreen" ? 12 : 3);
-      const desiredThumbCount = () => (getDisplayMode() === "fullscreen" ? 6 : 2);
 
       const syncHeight = () => { try { host?.notifyIntrinsicHeight?.(document.body.scrollHeight); } catch {} };
 
@@ -238,7 +235,7 @@
         const dm = host?.displayMode || "unknown";
         const mh = (typeof host?.maxHeight === "number") ? `${host.maxHeight}px` : "unknown";
         els.debug.textContent =
-          `displayMode: ${dm} · maxHeight: ${mh} · requestDisplayMode: ${supportsDisplayMode ? "yes" : "no"} · pageSize: ${state.pageSize} · contentHeight: ${document.body.scrollHeight}px`;
+          `displayMode: ${dm} · maxHeight: ${mh} · requestDisplayMode: ${supportsDisplayMode ? "yes" : "no"} · contentHeight: ${document.body.scrollHeight}px`;
       };
 
       const syncHeightAfterImages = async () => {
@@ -251,6 +248,77 @@
         requestAnimationFrame(() => { setDisplayAttrs(); setDebug(); syncHeight(); });
       };
 
+      // ---------- 狀態（會寫入 widgetState） ----------
+      let state = {
+        mode: "list_videos",
+        q: "",
+        cursor: 0,
+        pageSize: 3,
+        nextCursor: null,
+        total: null,
+        totalMatches: null,
+        channelTitle: "YouTube Finder",
+        items: [],
+      };
+
+      let detail = { open:false, videoId:null, item:null };
+
+      const saveWidgetState = () => {
+        try {
+          if (typeof host?.setWidgetState !== "function") return;
+          host.setWidgetState({
+            app: "ytfinder",
+            mode: state.mode,
+            q: state.q,
+            cursor: state.cursor,
+            pageSize: state.pageSize,
+            selectedVideoId: detail.videoId || null,
+          });
+        } catch {}
+      };
+
+      const restoreWidgetState = () => {
+        const ws = host?.widgetState;
+        if (!ws || ws.app !== "ytfinder") return;
+        if (typeof ws.mode === "string") state.mode = ws.mode;
+        if (typeof ws.q === "string") state.q = ws.q;
+        if (typeof ws.cursor === "number") state.cursor = ws.cursor;
+        if (typeof ws.pageSize === "number") state.pageSize = ws.pageSize;
+        if (typeof ws.selectedVideoId === "string") detail.videoId = ws.selectedVideoId;
+      };
+
+      // ---------- payload 驗證：避免被其他工具輸出污染 ----------
+      const allowedModes = new Set(["list_videos","search_videos","latest_song"]);
+
+      const looksLikeVideo = (v) => {
+        if (!v || typeof v !== "object") return false;
+        if (typeof v.title !== "string") return false;
+        const hasAny = !!(v.url || v.videoId || v.thumbnailUrl);
+        return hasAny;
+      };
+
+      const isOurPayload = (p) => {
+        if (!p || typeof p !== "object") return false;
+
+        // 最穩的：mode 必須是我們的
+        if (p.mode && !allowedModes.has(p.mode)) return false;
+
+        const items = Array.isArray(p.items) ? p.items : (p.item ? [p.item] : null);
+        if (!items) return false;
+
+        // 空清單也算有效
+        if (items.length === 0) return true;
+
+        // 至少第一筆要像影片
+        return looksLikeVideo(items[0]);
+      };
+
+      const getHostPayload = () => {
+        const out = host?.toolOutput;
+        return out?.structuredContent || out;
+      };
+
+      // ---------- 外部開啟 ----------
       const openUrl = async (url) => {
         if (!url) return;
         try {
@@ -261,26 +329,44 @@
         }
       };
 
-      // ✅ 只嘗試 PiP（不再自動 fullscreen）
-      const ensurePipIfPossible = async () => {
+      // ---------- 顯示模式 ----------
+      const requestMode = async (mode) => {
         if (!supportsDisplayMode) return;
-        try { await host.requestDisplayMode({ mode: "pip" }); } catch {}
+        try {
+          setStatus(`請求切換：${mode}...`);
+          await host.requestDisplayMode({ mode });
+          setStatus("");
+          setDisplayAttrs();
+          syncHeight();
+        } catch (e) {
+          setStatus(`切換失敗：${e?.message || String(e)}`);
+        }
       };
 
+      const ensurePipIfPossible = async () => {
+        if (!supportsDisplayMode) return;
+        try { await host.requestDisplayMode({ mode:"pip" }); } catch {}
+      };
+
+      // ---------- 右欄 ----------
       const clearRightPane = () => {
         detail.open = false;
         detail.item = null;
+        detail.videoId = null;
         els.detailView.hidden = true;
+        saveWidgetState();
         requestAnimationFrame(() => { setDisplayAttrs(); setDebug(); syncHeight(); });
       };
 
-      const showDetail = async (item) => {
+      const showDetail = async (item, { tryPip = true } = {}) => {
         if (!item) return;
+
         detail.open = true;
         detail.item = item;
+        detail.videoId = item.videoId || null;
 
-        // ✅ 你想要「右側 widget」就試 PiP；唔得就留 inline（寬度夠仍然雙欄）
-        await ensurePipIfPossible();
+        // 想要右側 panel 就試 pip；不強制 fullscreen
+        if (tryPip) await ensurePipIfPossible();
 
         els.detailTitle.textContent = item.title || "";
         els.detailSub.textContent = item.publishedAt ? `上架：${String(item.publishedAt).slice(0,10)}` : "";
@@ -289,44 +375,53 @@
         els.detailFoot.textContent = item.videoId ? `videoId: ${item.videoId}` : "";
 
         els.detailView.hidden = false;
+        saveWidgetState();
         syncHeightAfterImages();
       };
 
+      // ---------- 渲染 ----------
+      const desiredPageSize = () => (getDisplayMode() === "fullscreen" ? 12 : 3);
+      const desiredThumbCount = () => (getDisplayMode() === "fullscreen" ? 6 : 2);
+
       const render = (payload) => {
         if (!payload) return;
-        const items = payload.items || (payload.item ? [payload.item] : []);
 
-        state = {
-          ...state,
-          mode: payload.mode ?? state.mode,
-          q: payload.q ?? state.q,
-          cursor: Number(payload.cursor ?? state.cursor ?? 0),
-          nextCursor: payload.nextCursor ?? null,
-          pageSize: Number(payload.pageSize ?? state.pageSize ?? desiredPageSize()),
-          total: payload.total ?? state.total,
-          totalMatches: payload.totalMatches ?? state.totalMatches,
-          items,
-        };
+        // 合併 payload -> state
+        const items = Array.isArray(payload.items) ? payload.items : (payload.item ? [payload.item] : []);
+        state.mode = payload.mode || state.mode;
+        state.q = payload.q ?? state.q;
+        state.cursor = Number(payload.cursor ?? state.cursor ?? 0);
+        state.nextCursor = payload.nextCursor ?? null;
+        state.pageSize = Number(payload.pageSize ?? state.pageSize ?? desiredPageSize());
+        state.total = payload.total ?? state.total;
+        state.totalMatches = payload.totalMatches ?? state.totalMatches;
+        state.channelTitle = payload.channelTitle || state.channelTitle || "YouTube Finder";
+        state.items = items;
 
-        els.channelTitle.textContent = `🎧 ${payload.channelTitle || "YouTube Finder"}`;
-        if (state.mode === "search_videos") els.meta.innerHTML = `搜尋：<b>${esc(state.q)}</b>　結果：${state.totalMatches ?? 0}`;
-        else if (state.mode === "latest_song") els.meta.textContent = "最新一首";
-        else els.meta.textContent = `影片總數：${state.total ?? "?"}`;
+        els.channelTitle.textContent = `🎧 ${state.channelTitle}`;
+
+        if (state.mode === "search_videos") {
+          els.meta.innerHTML = `搜尋：<b>${esc(state.q || "")}</b>　結果：${state.totalMatches ?? items.length}`;
+        } else if (state.mode === "latest_song") {
+          els.meta.textContent = "最新一首";
+        } else {
+          els.meta.textContent = `影片總數：${state.total ?? "?"}`;
+        }
 
         els.btnPrev.disabled = state.cursor <= 0;
         els.btnNext.disabled = state.nextCursor == null;
 
-        // ✅ 縮圖：點擊只開右欄（唔開 YouTube）
+        // 縮圖（用 button，不導頁）
         const thumbs = items.slice(0, desiredThumbCount());
         els.gallery.innerHTML = thumbs.length ? thumbs.map((v, idx) => `
-          <button class="thumbBtn" data-i="${idx}" title="${esc(v.title || "")}" type="button">
+          <button class="thumbBtn" data-i="${idx}" type="button" title="${esc(v.title || "")}">
             <div class="thumbBox">
               <img src="${esc(v.thumbnailUrl || "")}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" />
             </div>
           </button>
         `).join("") : `<div class="meta">（沒有縮圖）</div>`;
 
-        // ✅ 標題：用 button，避免環境導去外部頁
+        // 標題列表（用 button，不導頁）
         els.links.innerHTML = items.length
           ? items.map((v, i) => `<li><button class="linkBtn" data-i="${i}" type="button">${esc(v.title || "")}</button></li>`).join("")
           : "";
@@ -334,82 +429,64 @@
         const onPick = (i) => {
           const item = state.items[i];
           if (!item) return;
-          showDetail(item);
+          // ✅ 絕不自動開 YouTube：只更新右欄
+          showDetail(item, { tryPip: true });
         };
 
-        // 綁定事件（加 stopPropagation 保險）
         els.gallery.querySelectorAll("[data-i]").forEach(el =>
-          el.addEventListener("click", (e) => {
-            e.preventDefault(); e.stopPropagation();
-            onPick(Number(el.getAttribute("data-i")));
-          })
+          el.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); onPick(Number(el.getAttribute("data-i"))); })
         );
         els.links.querySelectorAll("[data-i]").forEach(el =>
-          el.addEventListener("click", (e) => {
-            e.preventDefault(); e.stopPropagation();
-            onPick(Number(el.getAttribute("data-i")));
-          })
+          el.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); onPick(Number(el.getAttribute("data-i"))); })
         );
 
-        // ✅ 若資料更新，盡量保留右欄（同 videoId 重新對應）
-        if (detail.open && detail.item?.videoId) {
-          const hit = state.items.find(x => x?.videoId && x.videoId === detail.item.videoId);
+        // 如果之前有選中影片，且這次 items 仍找得到，則保留右欄（不閃回主頁）
+        if (detail.videoId) {
+          const hit = items.find(x => x?.videoId && x.videoId === detail.videoId);
           if (hit) {
-            // 更新右欄內容但唔再觸發 pip
-            els.detailTitle.textContent = hit.title || "";
-            els.detailSub.textContent = hit.publishedAt ? `上架：${String(hit.publishedAt).slice(0,10)}` : "";
-            els.detailImg.src = hit.thumbnailUrl || "";
-            els.detailText.textContent = (hit.description || "").trim() || "（無說明）";
-            detail.item = hit;
-            els.detailView.hidden = false;
+            // 只更新內容，不再嘗試 pip（避免你看到「更新一下」又被 layout 拉扯）
+            showDetail(hit, { tryPip: false });
           }
         }
 
+        saveWidgetState();
         setDisplayAttrs();
         setDebug();
         syncHeightAfterImages();
       };
 
+      // ---------- 呼叫工具 ----------
       const callTool = async (name, args) => {
         if (!host?.callTool) throw new Error("window.openai.callTool 不存在（請確認 skybridge 正常）");
         setStatus(`呼叫工具：${name}...`);
         const out = await host.callTool(name, args || {});
-        render(out?.structuredContent || out);
-        setStatus("");
-        requestAnimationFrame(() => { setDisplayAttrs(); setDebug(); syncHeight(); });
-      };
+        const payload = out?.structuredContent || out;
 
-      const refreshForMode = async () => {
-        const ps = desiredPageSize();
-        state.pageSize = ps;
-
-        if (state.mode === "search_videos") {
-          await callTool("search_videos", { q: state.q, cursor: 0, pageSize: ps });
-        } else if (state.mode === "list_videos") {
-          await callTool("list_videos", { cursor: 0, pageSize: ps, sort: "newest" });
+        // ✅ 只渲染我們的 payload；若不是就不要把 UI 打回主頁
+        if (isOurPayload(payload)) {
+          render(payload);
         } else {
-          setDisplayAttrs(); setDebug(); syncHeight();
+          setStatus("（收到非預期資料，已忽略，避免畫面被覆蓋）");
+          setTimeout(() => setStatus(""), 1200);
         }
+
+        setStatus("");
       };
 
-      const requestMode = async (mode) => {
-        if (!supportsDisplayMode) {
-          setStatus("此環境沒有 requestDisplayMode（host 未開放程式切換模式）");
-          setDisplayAttrs(); setDebug(); syncHeight();
-          return;
-        }
-        try {
-          setStatus(`請求切換模式：${mode}...`);
-          await host.requestDisplayMode({ mode });
-          setStatus("");
-          await refreshForMode();
-        } catch (e) {
-          setStatus(`切換失敗：${e?.message || String(e)}`);
-          setDisplayAttrs(); setDebug(); syncHeight();
-        }
+      // ---------- 同步（同一個 widget instance 內才有意義） ----------
+      let lastSig = "";
+      const sigOf = (p) => { try { return JSON.stringify(p); } catch { return String(Math.random()); } };
+
+      const syncFromHostToolOutput = () => {
+        const payload = getHostPayload();
+        if (!isOurPayload(payload)) return;
+        const sig = sigOf(payload);
+        if (sig === lastSig) return;
+        lastSig = sig;
+        render(payload);
       };
 
-      // Buttons
+      // ---------- 控制項 ----------
       els.btnFs.disabled = !supportsDisplayMode;
       els.btnPip.disabled = !supportsDisplayMode;
       els.btnInline.disabled = !supportsDisplayMode;
@@ -421,46 +498,49 @@
       els.btnSearch.addEventListener("click", async () => {
         const q = els.q.value.trim();
         if (!q) return;
-        clearRightPane();
-        try { await callTool("search_videos", { q, cursor: 0, pageSize: desiredPageSize() }); }
-        catch (e) { setStatus(e?.message || String(e)); setDisplayAttrs(); setDebug(); syncHeight(); }
+
+        // 注意：不要清右欄太激進，保留選中影片體驗會更穩
+        state.mode = "search_videos";
+        state.q = q;
+
+        try {
+          await callTool("search_videos", { q, cursor: 0, pageSize: desiredPageSize() });
+        } catch (e) {
+          setStatus(e?.message || String(e));
+        }
       });
       els.q.addEventListener("keydown", (e) => { if (e.key === "Enter") els.btnSearch.click(); });
 
       els.btnLatest.addEventListener("click", async () => {
-        clearRightPane();
+        state.mode = "latest_song";
         try { await callTool("latest_song", {}); }
-        catch (e) { setStatus(e?.message || String(e)); setDisplayAttrs(); setDebug(); syncHeight(); }
+        catch (e) { setStatus(e?.message || String(e)); }
       });
 
       els.btnReset.addEventListener("click", async () => {
-        clearRightPane();
+        state.mode = "list_videos";
         try { await callTool("list_videos", { cursor: 0, pageSize: desiredPageSize(), sort: "newest" }); }
-        catch (e) { setStatus(e?.message || String(e)); setDisplayAttrs(); setDebug(); syncHeight(); }
+        catch (e) { setStatus(e?.message || String(e)); }
       });
 
       els.btnPrev.addEventListener("click", async () => {
-        const prev = Math.max(0, state.cursor - state.pageSize);
-        clearRightPane();
+        const prev = Math.max(0, (state.cursor || 0) - (state.pageSize || 3));
         try {
           if (state.mode === "search_videos") await callTool("search_videos", { q: state.q, cursor: prev, pageSize: state.pageSize });
           else await callTool("list_videos", { cursor: prev, pageSize: state.pageSize, sort: "newest" });
-        } catch (e) { setStatus(e?.message || String(e)); setDisplayAttrs(); setDebug(); syncHeight(); }
+        } catch (e) { setStatus(e?.message || String(e)); }
       });
 
       els.btnNext.addEventListener("click", async () => {
         if (state.nextCursor == null) return;
-        clearRightPane();
         try {
           if (state.mode === "search_videos") await callTool("search_videos", { q: state.q, cursor: state.nextCursor, pageSize: state.pageSize });
           else await callTool("list_videos", { cursor: state.nextCursor, pageSize: state.pageSize, sort: "newest" });
-        } catch (e) { setStatus(e?.message || String(e)); setDisplayAttrs(); setDebug(); syncHeight(); }
+        } catch (e) { setStatus(e?.message || String(e)); }
       });
 
-      // Right panel actions
-      els.btnOpen.addEventListener("click", () => {
-        if (detail?.item?.url) openUrl(detail.item.url);
-      });
+      // 右欄按鈕
+      els.btnOpen.addEventListener("click", () => { if (detail?.item?.url) openUrl(detail.item.url); });
 
       els.btnAsk.addEventListener("click", async () => {
         const t = detail?.item?.title || "";
@@ -470,59 +550,52 @@
         try {
           if (host?.sendFollowUpMessage) await host.sendFollowUpMessage({ prompt: msg });
           else setStatus("host.sendFollowUpMessage 不存在");
-        } catch (e) {
-          setStatus(e?.message || String(e));
-        }
+        } catch (e) { setStatus(e?.message || String(e)); }
       });
 
       els.btnBack.addEventListener("click", clearRightPane);
 
-      // ====== ✅ 同步 ChatGPT 工具輸出（解決「ChatGPT 更新但 widget 不更新」）======
-      let lastToolSig = "";
-      const getHostPayload = () => {
-        const out = host?.toolOutput;
-        return out?.structuredContent || out;
-      };
-      const toolSig = (p) => {
-        try { return JSON.stringify(p); } catch { return String(Math.random()); }
-      };
-      const syncFromHostToolOutput = () => {
-        const payload = getHostPayload();
-        if (!payload) return;
-        if (!payload.items && !payload.item && !payload.mode) return;
-
-        const sig = toolSig(payload);
-        if (sig === lastToolSig) return;
-        lastToolSig = sig;
-
-        if (payload.items || payload.item) render(payload);
-      };
-
-      // ✅ 保底：就算 host 沒派事件，也用輪詢確保同步
-      setInterval(syncFromHostToolOutput, 500);
-      window.addEventListener("openai:tool_output", syncFromHostToolOutput);
-
+      // host globals 更新（displayMode/theme/toolOutput 可能變）
       window.addEventListener("openai:set_globals", () => {
+        setDisplayAttrs(); setDebug();
         syncFromHostToolOutput();
-        setDisplayAttrs(); setDebug(); syncHeight();
+        syncHeight();
       });
 
       window.addEventListener("resize", () => requestAnimationFrame(() => { setDisplayAttrs(); setDebug(); syncHeight(); }));
 
+      // ---------- 啟動 ----------
       (async () => {
-        try{
+        try {
           setDisplayAttrs();
           setDebug();
 
-          const out = host?.toolOutput;
-          const payload = out?.structuredContent || out;
-          state.pageSize = desiredPageSize();
+          // 先用 widgetState 還原「選到哪一首」
+          restoreWidgetState();
+          if (detail.videoId) {
+            // 有選中影片就顯示右欄容器（內容等 toolOutput 或後續 render 再補齊）
+            els.detailView.hidden = false;
+          }
 
-          if (payload && (payload.items || payload.item)) render(payload);
-          else await callTool("list_videos", { cursor:0, pageSize: state.pageSize, sort:"newest" });
-        } catch(e) {
+          // 如果 host 這個 widget instance 有 toolOutput，就渲染它
+          const payload = getHostPayload();
+          if (isOurPayload(payload)) {
+            render(payload);
+          } else {
+            // ✅ 不再強制回主頁：避免你看到「更新一下又還原」
+            // 如果你希望「每次都自動列清單」，把下一行取消註解即可：
+            // await callTool("list_videos", { cursor: 0, pageSize: desiredPageSize(), sort: "newest" });
+            els.meta.textContent = els.meta.textContent || "等待結果…（可用上方搜尋/新歌/清單）";
+            syncHeight();
+          }
+
+          // 保底：同一 widget instance 內同步 toolOutput
+          setInterval(syncFromHostToolOutput, 600);
+
+        } catch (e) {
           setStatus(e?.message || String(e));
         }
+
         requestAnimationFrame(() => { setDisplayAttrs(); setDebug(); syncHeight(); });
       })();
     })();
