@@ -108,7 +108,6 @@
     }
     .hint b{ color:var(--text); }
 
-    /* ===== Debug inline (guaranteed visible) ===== */
     details.debugDetails{
       border:1px solid var(--border);
       border-radius:12px;
@@ -135,7 +134,6 @@
     .debugActions{ display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; }
     .debugActions .btn{ height:30px; }
 
-    /* ===== Main layout ===== */
     .main{
       display:grid;
       grid-template-columns: 1fr;
@@ -143,13 +141,10 @@
       align-items:start;
       min-width:0;
     }
-
-    /* fullscreen or wide inline: show right sidebar */
     body[data-layout="split"] .main{
       grid-template-columns: minmax(0,1fr) var(--rightW);
     }
 
-    /* ===== Left (list) ===== */
     #listView{ min-width:0; }
 
     .gallery{
@@ -203,7 +198,6 @@
       margin-top:10px;
     }
 
-    /* ===== Right panel content (shared by sidebar + drawer + pip) ===== */
     .detailCard{
       border:1px solid var(--border);
       border-radius:16px;
@@ -247,7 +241,7 @@
     .detailBody{
       padding:12px;
       height: var(--detailH);
-      overflow:auto;           /* ✅ 右欄用 scrollbar */
+      overflow:auto;
       scrollbar-gutter: stable;
     }
 
@@ -297,7 +291,6 @@
       color:var(--muted);
     }
 
-    /* ===== Sidebar container (split layout) ===== */
     #detailSidebar[hidden]{ display:none !important; }
     #detailSidebar{
       position: sticky;
@@ -309,7 +302,6 @@
       height: var(--detailH);
     }
 
-    /* ===== Inline narrow: drawer ===== */
     #drawerBackdrop{
       position: fixed;
       inset: 0;
@@ -347,7 +339,6 @@
       overflow:auto;
     }
 
-    /* ===== PiP ===== */
     body[data-display="pip"]{
       overflow:hidden;
     }
@@ -385,7 +376,6 @@
     body[data-display="pip"] #drawerBackdrop{ display:none !important; }
     body[data-display="pip"] #detailDrawer{ display:none !important; }
 
-    /* PiP 直接用專用區塊 */
     #detailPip[hidden]{ display:none !important; }
     body[data-display="pip"] #detailPip{
       display:block !important;
@@ -451,7 +441,6 @@
     </div>
 
     <div class="main" id="main">
-      <!-- Left -->
       <div id="listView">
         <div class="gallery" id="gallery"></div>
         <ul class="links" id="links"></ul>
@@ -461,7 +450,6 @@
         </div>
       </div>
 
-      <!-- Right sidebar (only when layout=split) -->
       <div id="detailSidebar" hidden>
         <div class="detailCard">
           <div class="detailHeader">
@@ -492,7 +480,6 @@
         </div>
       </div>
 
-      <!-- PiP container -->
       <div id="detailPip" hidden>
         <div class="detailCard">
           <div class="detailHeader">
@@ -535,7 +522,6 @@
     <div class="status" id="status"></div>
   </div>
 
-  <!-- Inline Drawer -->
   <div id="drawerBackdrop"></div>
   <div id="detailDrawer" aria-hidden="true">
     <div class="detailCard">
@@ -596,7 +582,6 @@
         gallery: $("gallery"),
         links: $("links"),
 
-        // sidebar
         detailSidebar: $("detailSidebar"),
         btnCloseSidebar: $("btnCloseSidebar"),
         sbHeaderTitle: $("sbHeaderTitle"),
@@ -611,7 +596,6 @@
         btnAsk: $("btnAsk"),
         btnBack: $("btnBack"),
 
-        // pip
         detailPip: $("detailPip"),
         btnClosePip: $("btnClosePip"),
         pipBody: $("pipBody"),
@@ -624,7 +608,6 @@
         pipAsk: $("pipAsk"),
         pipClear: $("pipClear"),
 
-        // drawer
         drawerBackdrop: $("drawerBackdrop"),
         detailDrawer: $("detailDrawer"),
         btnCloseDrawer: $("btnCloseDrawer"),
@@ -638,7 +621,6 @@
         dwAsk: $("dwAsk"),
         dwClear: $("dwClear"),
 
-        // debug
         debugDetails: $("debugDetails"),
         dbgText: $("dbgText"),
         dbgRefresh: $("dbgRefresh"),
@@ -649,7 +631,6 @@
       const getDisplayMode = () => host?.displayMode || "inline";
       const setStatus = (t="") => { els.status.textContent = t; };
 
-      // payload filter
       const allowedModes = new Set(["list_videos","search_videos","latest_song"]);
       const looksLikeVideo = (v) => !!(v && typeof v === "object" && typeof v.title === "string" && (v.url || v.videoId || v.thumbnailUrl));
       const isOurPayload = (p) => {
@@ -668,7 +649,6 @@
 
       const safeJson = (v) => { try { return JSON.stringify(v); } catch { return String(v); } };
 
-      // ===== layout decision =====
       const computeLayout = () => {
         const dm = getDisplayMode();
         if (dm === "pip") return "pip";
@@ -749,7 +729,6 @@
         syncAfterPaint();
       };
 
-      // ===== drawer controls =====
       const showDrawer = () => {
         els.drawerBackdrop.classList.add("show");
         els.detailDrawer.classList.add("show");
@@ -767,7 +746,22 @@
       els.btnCloseSidebar.addEventListener("click", () => { clearDetail(); });
       els.btnClosePip.addEventListener("click", () => { clearDetail(); });
 
-      // ===== State =====
+      // ✅ 重要：縮圖 URL 生成 + cache-bust（修你「搜尋縮圖不換」）
+      const ytThumbFromId = (videoId) =>
+        videoId ? `https://i.ytimg.com/vi/${encodeURIComponent(videoId)}/hqdefault.jpg` : "";
+
+      const withCb = (url, cb) => {
+        if (!url) return "";
+        const sep = url.includes("?") ? "&" : "?";
+        return `${url}${sep}cb=${encodeURIComponent(cb || "")}`;
+      };
+
+      const thumbUrlOf = (item, idx) => {
+        const base = item?.thumbnailUrl || ytThumbFromId(item?.videoId);
+        const cb = item?.videoId || item?.url || String(idx);
+        return withCb(base, cb);
+      };
+
       let state = {
         mode:"list_videos",
         q:"",
@@ -813,7 +807,6 @@
         syncAfterPaint();
       };
 
-      // ✅ 新增：每次換內容都把捲動置頂（抽屜/右欄/PiP）
       const resetDetailScrollTop = () => {
         [els.sbBody, els.dwBody, els.pipBody].forEach(el => {
           if (!el) return;
@@ -825,10 +818,9 @@
         const title = item?.title || "";
         const sub = item?.publishedAt ? `上架：${String(item.publishedAt).slice(0,10)}` : "";
         const desc = (item?.description || "").trim() || "（無說明）";
-        const thumb = item?.thumbnailUrl || "";
+        const thumb = thumbUrlOf(item, 0); // ✅ 用同一套縮圖 fallback
         const foot = item?.videoId ? `videoId: ${item.videoId}` : "";
 
-        // sidebar
         els.sbHeaderTitle.textContent = title || "右側資訊";
         els.sbHeaderSub.textContent = sub || " ";
         els.detailImg.src = thumb;
@@ -837,23 +829,19 @@
         els.detailText.textContent = desc;
         els.detailFoot.textContent = foot;
 
-        // drawer
         els.dwImg.src = thumb;
         els.dwTitle.textContent = title;
         els.dwSub.textContent = sub;
         els.dwText.textContent = desc;
         els.dwFoot.textContent = foot;
 
-        // pip
         els.pipImg.src = thumb;
         els.pipTitle.textContent = title;
         els.pipSub.textContent = sub;
         els.pipText.textContent = desc;
         els.pipFoot.textContent = foot;
 
-        // ✅ 立刻置頂（避免點第2個項目時停在中間）
         resetDetailScrollTop();
-
         syncAfterImages();
       };
 
@@ -879,9 +867,7 @@
           hideDrawer(false);
         }
 
-        // ✅ 再做一次置頂（確保 drawer 顯示後也在頂部）
         resetDetailScrollTop();
-
         syncAfterPaint();
       };
 
@@ -913,14 +899,21 @@
         els.btnPrev.disabled = state.cursor <= 0;
         els.btnNext.disabled = state.nextCursor == null;
 
+        // ✅ 強制先清空，再重建（避免宿主快取/保留）
+        els.gallery.textContent = "";
+
         const thumbs = items.slice(0, desiredThumbCount());
-        els.gallery.innerHTML = thumbs.length ? thumbs.map((v, idx) => `
-          <button class="thumbBtn" data-i="${idx}" type="button" title="${(v.title||"").replace(/"/g,'&quot;')}">
-            <div class="thumbBox">
-              <img src="${(v.thumbnailUrl||"").replace(/"/g,'&quot;')}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" />
-            </div>
-          </button>
-        `).join("") : `<div class="meta">（沒有縮圖）</div>`;
+        els.gallery.innerHTML = thumbs.length ? thumbs.map((v, idx) => {
+          const t = thumbUrlOf(v, idx);
+          const title = (v.title||"").replace(/"/g,'&quot;');
+          return `
+            <button class="thumbBtn" data-i="${idx}" type="button" title="${title}">
+              <div class="thumbBox">
+                <img src="${t.replace(/"/g,'&quot;')}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" />
+              </div>
+            </button>
+          `;
+        }).join("") : `<div class="meta">（沒有縮圖）</div>`;
 
         els.links.innerHTML = items.length
           ? items.map((v, i) => `<li><button class="linkBtn" data-i="${i}" type="button">${(v.title||"")}</button></li>`).join("")
@@ -960,7 +953,6 @@
         setStatus("");
       };
 
-      // toolOutput sync
       let lastSig = "";
       const syncFromHostToolOutput = () => {
         const payload = getHostPayload();
@@ -971,7 +963,6 @@
         render(payload);
       };
 
-      // ===== Buttons =====
       els.btnFs.disabled = !supportsDisplayMode;
       els.btnPip.disabled = !supportsDisplayMode;
       els.btnInline.disabled = !supportsDisplayMode;
@@ -1021,7 +1012,6 @@
         } catch (e) { setStatus(e?.message || String(e)); }
       });
 
-      // detail actions: sidebar
       els.btnOpen.addEventListener("click", () => openUrl(detail?.item?.url));
       els.btnAsk.addEventListener("click", async () => {
         const t = detail?.item?.title || "";
@@ -1033,7 +1023,6 @@
       });
       els.btnBack.addEventListener("click", clearDetail);
 
-      // drawer actions
       els.dwOpen.addEventListener("click", () => openUrl(detail?.item?.url));
       els.dwAsk.addEventListener("click", async () => {
         const t = detail?.item?.title || "";
@@ -1045,7 +1034,6 @@
       });
       els.dwClear.addEventListener("click", () => hideDrawer(true));
 
-      // pip actions
       els.pipOpen.addEventListener("click", () => openUrl(detail?.item?.url));
       els.pipAsk.addEventListener("click", async () => {
         const t = detail?.item?.title || "";
@@ -1057,7 +1045,6 @@
       });
       els.pipClear.addEventListener("click", clearDetail);
 
-      // ===== Debug =====
       const refreshDebug = () => {
         const dm = getDisplayMode();
         const layout = computeLayout();
@@ -1128,7 +1115,6 @@ channelTitle: ${payload?.channelTitle ?? "-"}`;
         }
       });
 
-      // ===== Events =====
       window.addEventListener("openai:set_globals", () => {
         syncFromHostToolOutput();
         syncAfterPaint();
@@ -1138,7 +1124,6 @@ channelTitle: ${payload?.channelTitle ?? "-"}`;
         syncAfterPaint();
       });
 
-      // ===== Boot =====
       (async () => {
         applyModeLayout();
         try {
