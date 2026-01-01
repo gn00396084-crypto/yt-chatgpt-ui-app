@@ -3,14 +3,16 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>YouTube Finder UI (DEBUG)</title>
+  <title>YouTube Finder UI (PIP FIX + DEBUG)</title>
   <style>
     :root{
       --bg:#fff;--text:#111827;--muted:#6b7280;--border:#e5e7eb;--soft:#f3f4f6;
       --btn:#111827;--btnText:#fff;
-      --hostMaxH: 360px;
-      --pipH: 320px;
+      --hostMaxH: 360px;   /* 由 JS 覆蓋 */
+      --pipH: 320px;       /* 由 JS 覆蓋（通常等於 maxHeight 或 innerHeight） */
     }
+
+    html, body { height: 100%; }
     body{margin:0;font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto;background:var(--bg);color:var(--text)}
     .wrap{padding:14px}
 
@@ -27,13 +29,8 @@
     input::placeholder{color:#9ca3af}
 
     .btn{
-      height:34px;
-      padding:0 10px;
-      border-radius:10px;
-      border:1px solid var(--border);
-      background:#fff;
-      color:var(--text);
-      cursor:pointer;
+      height:34px;padding:0 10px;border-radius:10px;border:1px solid var(--border);
+      background:#fff;color:var(--text);cursor:pointer;
     }
     .btn.primary{background:var(--btn);border-color:var(--btn);color:var(--btnText)}
     .btn:hover{filter:brightness(.97)}
@@ -58,18 +55,11 @@
     .gallery{
       display:grid;
       grid-template-columns:repeat(2,minmax(0,1fr));
-      gap:10px;
-      margin-bottom:10px;
+      gap:10px;margin-bottom:10px;
     }
     .thumbBtn{
-      height:auto;
-      border:1px solid var(--border);
-      background:#fff;
-      padding:0;
-      border-radius:14px;
-      overflow:hidden;
-      cursor:pointer;
-      text-align:left;
+      height:auto;border:1px solid var(--border);background:#fff;padding:0;
+      border-radius:14px;overflow:hidden;cursor:pointer;text-align:left;
     }
     .thumbBox{width:100%;aspect-ratio:16/9;background:var(--soft)}
     .thumbBox img{width:100%;height:100%;object-fit:cover;display:block}
@@ -77,12 +67,8 @@
     .links{margin:0 0 8px 18px;padding:0}
     .links li{margin:6px 0}
     .linkBtn{
-      background:none;border:none;padding:0;font:inherit;
-      color:var(--text);
-      text-decoration:underline;
-      text-underline-offset:3px;
-      cursor:pointer;
-      text-align:left;
+      background:none;border:none;padding:0;font:inherit;color:var(--text);
+      text-decoration:underline;text-underline-offset:3px;cursor:pointer;text-align:left;
     }
 
     .pager{display:flex;gap:8px;justify-content:flex-end;margin-top:10px}
@@ -110,7 +96,66 @@
 
     body[data-display="inline"] #btnInline{display:none}
 
-    /* ===== Debug HUD ===== */
+    /* =======================
+       ✅ PIP：因為 Host 不會縮高度
+       只能讓內容「塞進固定高度內」
+       ======================= */
+    body[data-display="pip"]{
+      height: var(--hostMaxH) !important;     /* ✅ 直接鎖住整頁高度 */
+      overflow: hidden !important;            /* ✅ body 不准把 scrollHeight 撐到 408 */
+    }
+    body[data-display="pip"] .wrap{
+      height: 100% !important;
+      padding: 10px !important;
+      overflow: hidden !important;
+      display: flex !important;
+      flex-direction: column !important;
+      gap: 6px !important;
+    }
+
+    /* pip 盡量縮短頭部高度（避免內容擠爆） */
+    body[data-display="pip"] .top{
+      margin-bottom: 0 !important;
+      gap: 8px !important;
+    }
+    body[data-display="pip"] input{ min-width: 180px !important; }
+    body[data-display="pip"] .hint{ display:none !important; }
+    /* debugLine / meta 在 pip 會導致高度超標，預設隱藏（要看可打開 HUD） */
+    body[data-display="pip"] .debugLine{ display:none !important; }
+    body[data-display="pip"] .meta{ display:none !important; }
+    body[data-display="pip"] .status{ display:none !important; }
+
+    /* ✅ pip 只顯示右欄，並限制寬度避免 1305px 把圖片撐爆 */
+    body[data-display="pip"] .main{
+      flex: 1 1 auto !important;
+      min-height: 0 !important;              /* ✅ 讓內部可正確 overflow */
+      display: block !important;
+      overflow: hidden !important;
+    }
+    body[data-display="pip"] #listView{ display:none !important; }
+    body[data-display="pip"] #detailView{
+      display:block !important;
+      height: 100% !important;
+      max-width: 520px !important;           /* ✅ 重要：限制內容寬度 */
+      margin: 0 auto !important;
+    }
+    body[data-display="pip"] .detailCard{
+      height: 100% !important;
+      overflow: auto !important;             /* ✅ 捲動只發生在卡片內 */
+      position: relative !important;
+      top: auto !important;
+    }
+    body[data-display="pip"] .detailHero img{
+      height: 140px !important;              /* ✅ pip 內縮圖固定高度 */
+      width: 100% !important;
+      object-fit: cover !important;
+    }
+    body[data-display="pip"] .detailText{
+      max-height: 160px !important;
+      overflow: auto !important;
+    }
+
+    /* ===== Debug HUD（不影響 pip 內容高度） ===== */
     .hud{
       position:fixed; right:12px; bottom:12px;
       width:min(560px, calc(100vw - 24px));
@@ -136,11 +181,6 @@
     .hudMono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:11px;white-space:pre-wrap;word-break:break-word}
     .hudBtns{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
     .hudBtns .btn{height:30px}
-    .hudToggle{
-      height:30px; padding:0 10px; border-radius:10px; border:1px solid var(--border);
-      background:#fff; color:var(--text); cursor:pointer;
-    }
-    .hudToggle small{color:var(--muted)}
     .hudMiniBtn{
       position:fixed; right:12px; bottom:12px;
       z-index:99998;
@@ -151,28 +191,6 @@
       background:#fff;
       cursor:pointer;
       box-shadow:0 10px 30px rgba(0,0,0,.10);
-    }
-
-    /* ====== ✅ PiP overrides MUST be last (avoid being overridden) ====== */
-    body[data-display="pip"] .wrap{padding:10px !important;}
-    body[data-display="pip"] .hint{display:none !important;}
-    body[data-display="pip"] .main{grid-template-columns: 1fr !important;}
-    body[data-display="pip"] #listView{display:none !important;}
-    body[data-display="pip"] #detailView{display:block !important;}
-    body[data-display="pip"] .detailCard{
-      position:relative !important;
-      top:auto !important;
-      max-height: calc(var(--pipH) - 24px) !important;
-      overflow:auto !important;
-    }
-    body[data-display="pip"] .detailHero img{
-      height:160px !important;
-      width:100% !important;
-      object-fit:cover !important;
-    }
-    body[data-display="pip"] .detailText{
-      max-height: 170px !important;
-      overflow:auto !important;
     }
   </style>
 </head>
@@ -206,7 +224,6 @@
     </div>
 
     <div class="main" id="main">
-      <!-- Left list -->
       <div id="listView">
         <div class="gallery" id="gallery"></div>
         <ul class="links" id="links"></ul>
@@ -217,7 +234,6 @@
         </div>
       </div>
 
-      <!-- Right detail -->
       <div id="detailView" hidden>
         <div class="detailCard" id="detailCard">
           <div class="detailHero">
@@ -247,10 +263,8 @@
   <button class="hudMiniBtn" id="hudMiniBtn" type="button">🐞</button>
   <div class="hud" id="hud">
     <div class="hudHead">
-      <div><span class="hudTitle">DEBUG HUD</span> <span style="color:var(--muted)">build 2026-01-01</span></div>
-      <div>
-        <button class="hudToggle" id="hudClose" type="button">關閉</button>
-      </div>
+      <div><span class="hudTitle">DEBUG HUD</span> <span style="color:var(--muted)">pip-fix</span></div>
+      <div><button class="btn" id="hudClose" type="button" style="height:30px">關閉</button></div>
     </div>
     <div class="hudBody">
       <div class="hudGrid">
@@ -271,25 +285,12 @@
           <div class="hudMono" id="hudPayload"></div>
         </div>
       </div>
-
       <div class="hudBtns">
         <button class="btn" id="btnMeasure" type="button">重新量測</button>
-        <button class="btn" id="btnCopy" type="button">複製 debug</button>
-
-        <button class="btn" id="btnNotify240" type="button">notify 240</button>
-        <button class="btn" id="btnNotify280" type="button">notify 280</button>
-        <button class="btn" id="btnNotify320" type="button">notify 320</button>
-        <button class="btn" id="btnNotifyMax" type="button">notify hostMax</button>
-
-        <button class="btn" id="btnToggleNotify" type="button">暫停 notify</button>
-        <button class="btn" id="btnForcePipCss" type="button">切換「強制PiP CSS」</button>
       </div>
-
-      <div style="margin-top:10px">
-        <div class="hudRow">
-          <b>Event log (last 20)</b>
-          <div class="hudMono" id="hudLog"></div>
-        </div>
+      <div style="margin-top:10px" class="hudRow">
+        <b>Event log</b>
+        <div class="hudMono" id="hudLog"></div>
       </div>
     </div>
   </div>
@@ -297,9 +298,7 @@
   <script>
     (() => {
       const host = window.openai;
-      const UI_BUILD = "2026-01-01-debug";
-      const APP = "ytfinder";
-
+      const UI_BUILD = "pip-fixed-debug";
       const $ = (id) => document.getElementById(id);
 
       const els = {
@@ -345,39 +344,22 @@
         hudPayload: $("hudPayload"),
         hudLog: $("hudLog"),
         btnMeasure: $("btnMeasure"),
-        btnCopy: $("btnCopy"),
-        btnNotify240: $("btnNotify240"),
-        btnNotify280: $("btnNotify280"),
-        btnNotify320: $("btnNotify320"),
-        btnNotifyMax: $("btnNotifyMax"),
-        btnToggleNotify: $("btnToggleNotify"),
-        btnForcePipCss: $("btnForcePipCss"),
       };
 
       const esc = (s="") => String(s).replace(/[&<>"']/g, c => ({
         "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"
       }[c]));
+      const setStatus = (t="") => { els.status.textContent = t; };
 
       const supportsDisplayMode = typeof host?.requestDisplayMode === "function";
       const getDisplayMode = () => host?.displayMode || "inline";
 
-      let notifyEnabled = true;
-      let forcePipCss = false;
-
-      // --------- Debug log ----------
       const logBuf = [];
       const pushLog = (msg) => {
         const t = new Date().toLocaleTimeString();
         logBuf.unshift(`[${t}] ${msg}`);
         if (logBuf.length > 20) logBuf.pop();
         els.hudLog.textContent = logBuf.join("\n");
-      };
-
-      const setStatus = (t="") => { els.status.textContent = t; };
-
-      const getHostPayload = () => {
-        const out = host?.toolOutput;
-        return out?.structuredContent || out;
       };
 
       // payload filter
@@ -391,109 +373,82 @@
         if (items.length === 0) return true;
         return looksLikeVideo(items[0]);
       };
+      const getHostPayload = () => {
+        const out = host?.toolOutput;
+        return out?.structuredContent || out;
+      };
 
-      // ----- Heights control -----
+      // ✅ 因 Host pip 高度固定，這裡只用來「讓 CSS 跟 viewport 一致」
       const setCssHeightsFromHost = () => {
-        const mh = (typeof host?.maxHeight === "number") ? host.maxHeight : 360;
+        const mh = (typeof host?.maxHeight === "number") ? host.maxHeight : window.innerHeight;
+        // pip：用「實際 iframe viewport 高度」更準（你 debug 的 viewport 高度 = 328）
+        const pipH = Math.max(220, Math.floor(window.innerHeight || mh || 320));
         document.documentElement.style.setProperty("--hostMaxH", `${mh}px`);
-        const pipH = Math.max(220, Math.min(mh, 320));
         document.documentElement.style.setProperty("--pipH", `${pipH}px`);
         return { mh, pipH };
-      };
-
-      const calcIntrinsicHeight = () => {
-        const dm = getDisplayMode();
-        const mh = (typeof host?.maxHeight === "number") ? host.maxHeight : 360;
-        if (dm === "pip") {
-          // ✅ PiP 強制固定高度（避免撐大）
-          const pipH = Math.max(220, Math.min(mh, 320));
-          return pipH;
-        }
-        return document.body.scrollHeight;
-      };
-
-      let lastNotified = null;
-      const notifyHeight = (h = null) => {
-        if (!notifyEnabled) return;
-        const val = (typeof h === "number") ? h : calcIntrinsicHeight();
-        try {
-          host?.notifyIntrinsicHeight?.(val);
-          lastNotified = val;
-          pushLog(`notifyIntrinsicHeight(${val})`);
-        } catch (e) {
-          pushLog(`notifyIntrinsicHeight 失敗: ${e?.message || String(e)}`);
-        }
       };
 
       const setDisplayAttrs = () => {
         const dm = getDisplayMode();
         document.body.setAttribute("data-display", dm);
-
-        // Debug：允許強制 PiP CSS（用於判斷是不是 CSS 沒吃到）
-        if (forcePipCss) document.body.setAttribute("data-display", "pip");
-
-        const { mh, pipH } = setCssHeightsFromHost();
-        els.modeBadge.textContent = `${dm}${forcePipCss ? " (forceCSS:pip)" : ""}`;
-
-        return { dm, mh, pipH };
+        els.modeBadge.textContent = dm;
+        setCssHeightsFromHost();
       };
 
-      const measureLayout = () => {
+      // ✅ pip 下 notifyIntrinsicHeight 不會改變外框高度（你已驗證）
+      // 但仍保留呼叫，避免 inline/fullscreen 失效
+      const notifyHeight = () => {
+        try {
+          const dm = getDisplayMode();
+          const h = (dm === "pip") ? Math.floor(window.innerHeight) : document.body.scrollHeight;
+          host?.notifyIntrinsicHeight?.(h);
+          pushLog(`notifyIntrinsicHeight(${h})`);
+        } catch (e) {
+          pushLog(`notify failed: ${e?.message || e}`);
+        }
+      };
+
+      const measure = () => {
         const dm = getDisplayMode();
         const mh = (typeof host?.maxHeight === "number") ? host.maxHeight : null;
-
         const main = $("main");
         const mainCols = main ? getComputedStyle(main).gridTemplateColumns : "n/a";
         const listDisp = els.listView ? getComputedStyle(els.listView).display : "n/a";
         const detailDisp = els.detailView ? getComputedStyle(els.detailView).display : "n/a";
-
         const rootRect = els.root?.getBoundingClientRect?.();
         const cardRect = els.detailCard?.getBoundingClientRect?.();
-
-        const body = document.body;
-        const de = document.documentElement;
-
-        const intrinsic = calcIntrinsicHeight();
-        const contentH = body.scrollHeight;
-
         return {
-          dm,
-          mh,
-          contentH,
-          intrinsic,
-          lastNotified,
-          mainCols,
-          listDisp,
-          detailDisp,
-          rootRect: rootRect ? { w: Math.round(rootRect.width), h: Math.round(rootRect.height) } : null,
-          cardRect: cardRect ? { w: Math.round(cardRect.width), h: Math.round(cardRect.height) } : null,
-          client: { vw: window.innerWidth, vh: window.innerHeight },
-          doc: { deCH: de.clientHeight, deSH: de.scrollHeight, bodyCH: body.clientHeight, bodySH: body.scrollHeight },
-          pipH: getComputedStyle(document.documentElement).getPropertyValue("--pipH").trim(),
-          hostMaxH: getComputedStyle(document.documentElement).getPropertyValue("--hostMaxH").trim(),
+          dm, mh,
+          viewport: `${window.innerWidth}x${window.innerHeight}`,
+          bodySH: document.body.scrollHeight,
+          bodyCH: document.body.clientHeight,
+          rootRect: rootRect ? `${Math.round(rootRect.width)}x${Math.round(rootRect.height)}` : "n/a",
+          cardRect: cardRect ? `${Math.round(cardRect.width)}x${Math.round(cardRect.height)}` : "n/a",
+          mainCols, listDisp, detailDisp,
+          cssPipH: getComputedStyle(document.documentElement).getPropertyValue("--pipH").trim(),
+          cssHostMaxH: getComputedStyle(document.documentElement).getPropertyValue("--hostMaxH").trim(),
         };
       };
 
       const refreshDebug = () => {
-        const info = measureLayout();
-
+        const m = measure();
         els.debugLine.textContent =
-          `build:${UI_BUILD} · displayMode:${info.dm} · maxHeight:${info.mh ?? "?"} · contentHeight:${info.contentH}px · intrinsic:${info.intrinsic}px · lastNotify:${info.lastNotified ?? "-"} · mainCols:${info.mainCols}`;
+          `build:${UI_BUILD} · displayMode:${m.dm} · maxHeight:${m.mh ?? "?"} · viewport:${m.viewport} · bodySH:${m.bodySH} · root:${m.rootRect}`;
 
         els.hudHost.textContent =
-          `displayMode: ${info.dm}\nrequestDisplayMode: ${supportsDisplayMode ? "yes" : "no"}\nmaxHeight: ${info.mh ?? "unknown"}\nCSS --pipH: ${info.pipH}\nCSS --hostMaxH: ${info.hostMaxH}`;
+          `displayMode: ${m.dm}\nrequestDisplayMode: ${supportsDisplayMode ? "yes" : "no"}\nmaxHeight: ${m.mh ?? "unknown"}\nCSS --pipH: ${m.cssPipH}\nCSS --hostMaxH: ${m.cssHostMaxH}`;
 
         els.hudHeights.textContent =
-          `contentHeight(body.scrollHeight): ${info.contentH}\ncalcIntrinsicHeight(): ${info.intrinsic}\nlastNotified: ${info.lastNotified ?? "-"}\nviewport: ${info.client.vw}x${info.client.vh}\ndoc: deCH:${info.doc.deCH} deSH:${info.doc.deSH} bodyCH:${info.doc.bodyCH} bodySH:${info.doc.bodySH}`;
+          `viewport: ${m.viewport}\nbody.scrollHeight: ${m.bodySH}\nbody.clientHeight: ${m.bodyCH}\nrootRect: ${m.rootRect}\ndetailCardRect: ${m.cardRect}`;
 
         els.hudLayout.textContent =
-          `main grid-template-columns: ${info.mainCols}\n#listView display: ${info.listDisp}\n#detailView display: ${info.detailDisp}\nrootRect: ${info.rootRect ? `${info.rootRect.w}x${info.rootRect.h}` : "n/a"}\ndetailCardRect: ${info.cardRect ? `${info.cardRect.w}x${info.cardRect.h}` : "n/a"}`;
+          `main grid-template-columns: ${m.mainCols}\n#listView display: ${m.listDisp}\n#detailView display: ${m.detailDisp}`;
 
         const p = getHostPayload();
         if (p && typeof p === "object") {
           const items = Array.isArray(p.items) ? p.items : (p.item ? [p.item] : []);
           els.hudPayload.textContent =
-            `isOurPayload: ${isOurPayload(p)}\nmode: ${p.mode ?? "-"}\nq: ${p.q ?? "-"}\nitems: ${items.length}\nnextCursor: ${p.nextCursor ?? "-"}\nchannelTitle: ${p.channelTitle ?? "-"}`;
+            `isOurPayload: ${isOurPayload(p)}\nmode: ${p.mode ?? "-"}\nitems: ${items.length}\nchannelTitle: ${p.channelTitle ?? "-"}`;
         } else {
           els.hudPayload.textContent = `toolOutput: ${p ? String(p) : "null"}`;
         }
@@ -503,12 +458,12 @@
         requestAnimationFrame(() => {
           setDisplayAttrs();
           refreshDebug();
-          notifyHeight(); // 正常流程：每次 paint 後回報
+          notifyHeight();
         });
       };
 
       const syncAfterImages = async () => {
-        try {
+        try{
           const imgs = [...document.querySelectorAll("img")];
           await Promise.allSettled(imgs.map(img =>
             img.decode?.().catch(()=>{}) || new Promise(r => (img.onload = img.onerror = r))
@@ -517,7 +472,6 @@
         syncAfterPaint();
       };
 
-      // ---------- App state ----------
       let state = {
         mode:"list_videos", q:"", cursor:0, pageSize:3, nextCursor:null,
         total:null, totalMatches:null, channelTitle:"YouTube Finder", items:[]
@@ -539,9 +493,9 @@
         try {
           pushLog(`requestDisplayMode(${mode})`);
           await host.requestDisplayMode({ mode });
-          setTimeout(syncAfterPaint, 120);
+          setTimeout(syncAfterPaint, 140);
         } catch (e) {
-          pushLog(`requestDisplayMode 失敗: ${e?.message || String(e)}`);
+          pushLog(`requestDisplayMode failed: ${e?.message || e}`);
         }
       };
 
@@ -551,9 +505,9 @@
           pushLog(`requestDisplayMode(pip)`);
           await host.requestDisplayMode({ mode:"pip" });
         } catch (e) {
-          pushLog(`pip 失敗: ${e?.message || String(e)}`);
+          pushLog(`pip failed: ${e?.message || e}`);
         }
-        setTimeout(syncAfterPaint, 120);
+        setTimeout(syncAfterPaint, 140);
       };
 
       const clearRightPane = () => {
@@ -566,7 +520,6 @@
 
       const showDetail = async (item, { tryPip = true } = {}) => {
         if (!item) return;
-
         detail.open = true;
         detail.item = item;
         detail.videoId = item.videoId || null;
@@ -599,14 +552,9 @@
         state.items = items;
 
         els.channelTitle.textContent = `🎧 ${state.channelTitle}`;
-
-        if (state.mode === "search_videos") {
-          els.meta.innerHTML = `搜尋：<b>${esc(state.q || "")}</b>　結果：${state.totalMatches ?? items.length}`;
-        } else if (state.mode === "latest_song") {
-          els.meta.textContent = "最新一首";
-        } else {
-          els.meta.textContent = `影片總數：${state.total ?? "?"}`;
-        }
+        if (state.mode === "search_videos") els.meta.innerHTML = `搜尋：<b>${esc(state.q || "")}</b>　結果：${state.totalMatches ?? items.length}`;
+        else if (state.mode === "latest_song") els.meta.textContent = "最新一首";
+        else els.meta.textContent = `影片總數：${state.total ?? "?"}`;
 
         els.btnPrev.disabled = state.cursor <= 0;
         els.btnNext.disabled = state.nextCursor == null;
@@ -627,8 +575,8 @@
         const onPick = (i) => {
           const item = state.items[i];
           if (!item) return;
-          pushLog(`pick item[${i}] title=${item.title?.slice(0,30) || ""}`);
-          showDetail(item, { tryPip: true }); // ✅ 不開 YouTube，只更新右欄
+          pushLog(`pick ${i}`);
+          showDetail(item, { tryPip: true });
         };
 
         els.gallery.querySelectorAll("[data-i]").forEach(el =>
@@ -638,7 +586,6 @@
           el.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); onPick(Number(el.getAttribute("data-i"))); })
         );
 
-        // 若已選中影片，更新右欄（不再觸發 pip）
         if (detail.videoId) {
           const hit = items.find(x => x?.videoId && x.videoId === detail.videoId);
           if (hit) showDetail(hit, { tryPip: false });
@@ -648,20 +595,16 @@
       };
 
       const callTool = async (name, args) => {
-        if (!host?.callTool) throw new Error("window.openai.callTool 不存在（請確認 skybridge 正常）");
+        if (!host?.callTool) throw new Error("window.openai.callTool 不存在");
         setStatus(`呼叫工具：${name}...`);
         pushLog(`callTool(${name})`);
         const out = await host.callTool(name, args || {});
         const payload = out?.structuredContent || out;
-        if (isOurPayload(payload)) {
-          render(payload);
-        } else {
-          pushLog(`ignored payload (not ours)`);
-        }
+        if (isOurPayload(payload)) render(payload);
         setStatus("");
       };
 
-      // 同步 toolOutput（同一 widget instance）
+      // toolOutput sync
       let lastSig = "";
       const sigOf = (p) => { try { return JSON.stringify(p); } catch { return String(Math.random()); } };
       const syncFromHostToolOutput = () => {
@@ -670,11 +613,11 @@
         const sig = sigOf(payload);
         if (sig === lastSig) return;
         lastSig = sig;
-        pushLog(`toolOutput changed (mode=${payload.mode || "-"})`);
+        pushLog(`toolOutput changed`);
         render(payload);
       };
 
-      // Buttons
+      // UI buttons
       els.btnFs.disabled = !supportsDisplayMode;
       els.btnPip.disabled = !supportsDisplayMode;
       els.btnInline.disabled = !supportsDisplayMode;
@@ -688,144 +631,66 @@
         if (!q) return;
         state.mode = "search_videos";
         state.q = q;
-        try { await callTool("search_videos", { q, cursor: 0, pageSize: desiredPageSize() }); }
-        catch (e) { setStatus(e?.message || String(e)); pushLog(`search error: ${e?.message || e}`); }
+        await callTool("search_videos", { q, cursor: 0, pageSize: desiredPageSize() });
       });
       els.q.addEventListener("keydown", (e) => { if (e.key === "Enter") els.btnSearch.click(); });
 
       els.btnLatest.addEventListener("click", async () => {
         state.mode = "latest_song";
-        try { await callTool("latest_song", {}); }
-        catch (e) { setStatus(e?.message || String(e)); pushLog(`latest error: ${e?.message || e}`); }
+        await callTool("latest_song", {});
       });
 
       els.btnReset.addEventListener("click", async () => {
         state.mode = "list_videos";
-        try { await callTool("list_videos", { cursor: 0, pageSize: desiredPageSize(), sort: "newest" }); }
-        catch (e) { setStatus(e?.message || String(e)); pushLog(`reset error: ${e?.message || e}`); }
+        await callTool("list_videos", { cursor: 0, pageSize: desiredPageSize(), sort: "newest" });
       });
 
       els.btnPrev.addEventListener("click", async () => {
         const prev = Math.max(0, (state.cursor || 0) - (state.pageSize || 3));
-        try {
-          if (state.mode === "search_videos") await callTool("search_videos", { q: state.q, cursor: prev, pageSize: state.pageSize });
-          else await callTool("list_videos", { cursor: prev, pageSize: state.pageSize, sort: "newest" });
-        } catch (e) { setStatus(e?.message || String(e)); pushLog(`prev error: ${e?.message || e}`); }
+        if (state.mode === "search_videos") await callTool("search_videos", { q: state.q, cursor: prev, pageSize: state.pageSize });
+        else await callTool("list_videos", { cursor: prev, pageSize: state.pageSize, sort: "newest" });
       });
 
       els.btnNext.addEventListener("click", async () => {
         if (state.nextCursor == null) return;
-        try {
-          if (state.mode === "search_videos") await callTool("search_videos", { q: state.q, cursor: state.nextCursor, pageSize: state.pageSize });
-          else await callTool("list_videos", { cursor: state.nextCursor, pageSize: state.pageSize, sort: "newest" });
-        } catch (e) { setStatus(e?.message || String(e)); pushLog(`next error: ${e?.message || e}`); }
+        if (state.mode === "search_videos") await callTool("search_videos", { q: state.q, cursor: state.nextCursor, pageSize: state.pageSize });
+        else await callTool("list_videos", { cursor: state.nextCursor, pageSize: state.pageSize, sort: "newest" });
       });
 
-      // Right panel actions
       els.btnOpen.addEventListener("click", () => { if (detail?.item?.url) openUrl(detail.item.url); });
       els.btnAsk.addEventListener("click", async () => {
         const t = detail?.item?.title || "";
         const msg = t ? `用繁體中文簡短介紹這支影片：${t}\n請整理 3-5 個重點。` : "簡短介紹這個內容。";
-        try {
-          if (host?.sendFollowUpMessage) {
-            pushLog(`sendFollowUpMessage()`);
-            await host.sendFollowUpMessage({ prompt: msg });
-          } else setStatus("host.sendFollowUpMessage 不存在");
-        } catch (e) { setStatus(e?.message || String(e)); pushLog(`ask error: ${e?.message || e}`); }
+        if (host?.sendFollowUpMessage) await host.sendFollowUpMessage({ prompt: msg });
       });
       els.btnBack.addEventListener("click", clearRightPane);
 
-      // ---- Debug HUD controls ----
+      // HUD
       const showHud = () => { els.hud.classList.add("show"); refreshDebug(); };
       const hideHud = () => { els.hud.classList.remove("show"); };
       els.btnBug.addEventListener("click", showHud);
       els.hudMiniBtn.addEventListener("click", showHud);
       els.hudClose.addEventListener("click", hideHud);
+      els.btnMeasure.addEventListener("click", () => refreshDebug());
 
-      els.btnMeasure.addEventListener("click", () => {
-        pushLog(`manual measure`);
-        refreshDebug();
-      });
-
-      const copyDebug = async () => {
-        const info = measureLayout();
-        const txt =
-          `UI_BUILD=${UI_BUILD}\n` +
-          `displayMode=${info.dm}\nmaxHeight=${info.mh}\ncontentHeight=${info.contentH}\nintrinsic=${info.intrinsic}\nlastNotified=${info.lastNotified}\n` +
-          `mainCols=${info.mainCols}\nlistDisp=${info.listDisp}\ndetailDisp=${info.detailDisp}\n` +
-          `rootRect=${JSON.stringify(info.rootRect)}\ncardRect=${JSON.stringify(info.cardRect)}\n` +
-          `css(--pipH)=${info.pipH} css(--hostMaxH)=${info.hostMaxH}\n` +
-          `log:\n${logBuf.join("\n")}\n`;
-        try {
-          await navigator.clipboard.writeText(txt);
-          pushLog(`copied debug to clipboard`);
-          setStatus("已複製 debug");
-          setTimeout(()=>setStatus(""), 800);
-        } catch {
-          pushLog(`clipboard not available`);
-          setStatus("剪貼簿不可用（請手動截圖 debug HUD）");
-        }
-      };
-      els.btnCopy.addEventListener("click", copyDebug);
-
-      const notifyManual = (h) => {
-        notifyHeight(h);
-        refreshDebug();
-      };
-      els.btnNotify240.addEventListener("click", () => notifyManual(240));
-      els.btnNotify280.addEventListener("click", () => notifyManual(280));
-      els.btnNotify320.addEventListener("click", () => notifyManual(320));
-      els.btnNotifyMax.addEventListener("click", () => {
-        const mh = (typeof host?.maxHeight === "number") ? host.maxHeight : 320;
-        notifyManual(mh);
-      });
-
-      els.btnToggleNotify.addEventListener("click", () => {
-        notifyEnabled = !notifyEnabled;
-        els.btnToggleNotify.textContent = notifyEnabled ? "暫停 notify" : "恢復 notify";
-        pushLog(`notifyEnabled=${notifyEnabled}`);
-        refreshDebug();
-        if (notifyEnabled) notifyHeight();
-      });
-
-      els.btnForcePipCss.addEventListener("click", () => {
-        forcePipCss = !forcePipCss;
-        pushLog(`forcePipCss=${forcePipCss}`);
-        syncAfterPaint();
-      });
-
-      // ---- host events ----
       window.addEventListener("openai:set_globals", () => {
-        pushLog(`event: openai:set_globals (displayMode=${getDisplayMode()})`);
+        pushLog(`openai:set_globals`);
         syncFromHostToolOutput();
         syncAfterPaint();
       });
-
       window.addEventListener("resize", () => {
-        pushLog(`event: resize`);
+        pushLog(`resize`);
         syncAfterPaint();
       });
 
-      // Boot
+      // boot
       (async () => {
-        pushLog(`boot UI_BUILD=${UI_BUILD}`);
+        pushLog(`boot ${UI_BUILD}`);
         syncAfterPaint();
+        const payload = getHostPayload();
+        if (isOurPayload(payload)) render(payload);
+        else await callTool("list_videos", { cursor: 0, pageSize: desiredPageSize(), sort: "newest" });
 
-        try {
-          const payload = getHostPayload();
-          if (isOurPayload(payload)) {
-            pushLog(`boot render from toolOutput`);
-            render(payload);
-          } else {
-            pushLog(`boot call list_videos`);
-            await callTool("list_videos", { cursor: 0, pageSize: desiredPageSize(), sort: "newest" });
-          }
-        } catch (e) {
-          setStatus(e?.message || String(e));
-          pushLog(`boot error: ${e?.message || e}`);
-        }
-
-        // keep sync
         setInterval(syncFromHostToolOutput, 650);
         setInterval(refreshDebug, 1200);
       })();
