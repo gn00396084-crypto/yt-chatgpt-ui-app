@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>YouTube Finder UI (Right Scroll)</title>
+  <title>YouTube Finder UI (Right Panel + Scroll)</title>
 
   <style>
     :root{
@@ -19,7 +19,7 @@
       --frameH: 360px;
       --frameW: 640px;
 
-      /* PiP 內容最大寬度（避免被 1300px 撐爆） */
+      /* PiP 內容最大寬度（避免太寬看起來被放大） */
       --pipMaxW: 560px;
 
       /* 右欄可用高度（JS 動態計算） */
@@ -137,7 +137,7 @@
 
     @media (min-width: 860px){
       .main{
-        grid-template-columns: minmax(0,1fr) 380px;
+        grid-template-columns: minmax(0,1fr) 380px; /* ✅ 左清單 + 右資訊欄 */
       }
     }
 
@@ -197,7 +197,6 @@
     #detailView[hidden]{ display:none !important; }
 
     .detailWrap{
-      /* 右欄容器：避免被內容撐開 */
       min-height:0;
     }
 
@@ -207,7 +206,7 @@
       padding:12px;
       background:#fff;
 
-      /* ✅ 右欄改用 scroll bar（高度由 JS 計算） */
+      /* ✅ 右欄使用 scrollbar */
       height: var(--detailH);
       overflow:auto;
       scrollbar-gutter: stable;
@@ -257,10 +256,7 @@
     }
 
     /* ========= PiP behavior =========
-       Host 會鎖 iframe 高度（maxHeight），我們做的事：
-       1) 把 #root 固定在 viewport（不讓 body 被撐高）
-       2) 只顯示右欄（避免空白與超高）
-       3) 右欄維持 scroll bar
+       PiP 下：只顯示右欄（單欄），且右欄內部捲動
     */
     body[data-display="pip"]{
       overflow:hidden;
@@ -282,7 +278,6 @@
       display:none !important;
     }
 
-    /* pip 控制列縮小、可橫向捲 */
     body[data-display="pip"] .controls{
       flex-wrap:nowrap;
       overflow:auto;
@@ -321,9 +316,6 @@
       width:100%;
       object-fit:cover;
     }
-
-    /* inline 模式：顯示右欄時，右欄也用 scroll bar（已套用 detailH） */
-    /* fullscreen 模式下也會照 JS 計算高度 */
 
     body[data-display="inline"] #btnInline{ display:none; }
   </style>
@@ -400,7 +392,6 @@
       const els = {
         root: $("root"),
         topBar: $("topBar"),
-        controlsBar: $("controlsBar"),
         main: $("main"),
 
         channelTitle: $("channelTitle"),
@@ -466,11 +457,9 @@
         document.documentElement.style.setProperty("--frameW", `${vw}px`);
         document.documentElement.style.setProperty("--frameH", `${vh}px`);
 
-        // PiP max width (avoid super-wide content)
         const pipMaxW = Math.min(560, vw - 20);
         document.documentElement.style.setProperty("--pipMaxW", `${pipMaxW}px`);
 
-        // right panel height = viewport - top bar height - paddings
         const dm = getDisplayMode();
         const rootStyle = getComputedStyle(els.root);
         const padTop = parseFloat(rootStyle.paddingTop || "0") || 0;
@@ -478,11 +467,7 @@
         const topH = Math.ceil(els.topBar.getBoundingClientRect().height);
 
         let detailH = vh - padTop - padBot - topH - 8; // 8: gap
-        // inline/fullscreen：通常高度不只 viewport，但用 viewport 計算能讓右欄「永遠有 scroll」
-        // pip：#root fixed inset:0，這個計算就更準
         detailH = Math.max(160, Math.floor(detailH));
-
-        // fullscreen 下讓右欄更高一些（如果 viewport 本身就高）
         if (dm === "fullscreen") detailH = Math.max(detailH, 320);
 
         document.documentElement.style.setProperty("--detailH", `${detailH}px`);
@@ -496,7 +481,6 @@
       };
 
       const notifyHeight = () => {
-        // pip 外框高度 Host 會鎖 maxHeight，不會因 notify 變小；仍保留避免其它模式不準
         try{
           const dm = getDisplayMode();
           const h = (dm === "pip") ? Math.floor(window.innerHeight) : document.body.scrollHeight;
@@ -533,6 +517,7 @@
         channelTitle:"YouTube Finder",
         items:[]
       };
+
       let detail = { videoId:null, item:null };
 
       const openUrl = async (url) => {
@@ -557,13 +542,6 @@
         }
       };
 
-      const ensurePipIfPossible = async () => {
-        if (!supportsDisplayMode) return;
-        try { await host.requestDisplayMode({ mode:"pip" }); }
-        catch {}
-        setTimeout(syncAfterPaint, 140);
-      };
-
       const clearRightPane = () => {
         detail.videoId = null;
         detail.item = null;
@@ -571,13 +549,18 @@
         syncAfterPaint();
       };
 
-      const showDetail = async (item, { tryPip = true } = {}) => {
+      // ✅ 重點：showDetail 不再自動切到 PiP
+      const showDetail = async (item, { switchToPip = false } = {}) => {
         if (!item) return;
 
         detail.item = item;
         detail.videoId = item.videoId || null;
 
-        if (tryPip) await ensurePipIfPossible();
+        // 只有你明確要求（按 PiP）才切
+        if (switchToPip && supportsDisplayMode) {
+          try { await host.requestDisplayMode({ mode:"pip" }); }
+          catch {}
+        }
 
         els.detailTitle.textContent = item.title || "";
         els.detailSub.textContent = item.publishedAt ? `上架：${String(item.publishedAt).slice(0,10)}` : "";
@@ -633,8 +616,8 @@
         const onPick = (i) => {
           const item = state.items[i];
           if (!item) return;
-          // ✅ 不開 YouTube，只更新右欄
-          showDetail(item, { tryPip: true });
+          // ✅ 不開 YouTube、不切 PiP，只更新右欄
+          showDetail(item, { switchToPip:false });
         };
 
         els.gallery.querySelectorAll("[data-i]").forEach(el =>
@@ -644,16 +627,16 @@
           el.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); onPick(Number(el.getAttribute("data-i"))); })
         );
 
-        // ✅ PiP 模式：若未選任何影片但有結果，自動選第一筆，避免空白
+        // ✅ 如果現在在 PiP，且右欄沒選中任何影片，預設選第一筆避免空白
         if (getDisplayMode() === "pip" && !detail.videoId && items.length) {
-          showDetail(items[0], { tryPip:false });
+          showDetail(items[0], { switchToPip:false });
           return;
         }
 
-        // 若已選中影片，更新右欄（不再觸發 pip）
+        // 若已選中影片，更新右欄（保持右欄同步）
         if (detail.videoId) {
           const hit = items.find(x => x?.videoId && x.videoId === detail.videoId);
-          if (hit) showDetail(hit, { tryPip:false });
+          if (hit) showDetail(hit, { switchToPip:false });
         }
 
         syncAfterImages();
@@ -668,7 +651,7 @@
         setStatus("");
       };
 
-      // 同步 toolOutput：避免「chatgpt 有更新但 widget 不更新」
+      // 同步 toolOutput：減少「ChatGPT 更新但 widget 不更新」
       let lastSig = "";
       const sigOf = (p) => { try { return JSON.stringify(p); } catch { return String(Math.random()); } };
       const syncFromHostToolOutput = () => {
@@ -686,7 +669,15 @@
       els.btnInline.disabled = !supportsDisplayMode;
 
       els.btnFs.addEventListener("click", () => requestMode("fullscreen"));
-      els.btnPip.addEventListener("click", () => requestMode("pip"));
+
+      // ✅ 只有按 PiP 按鈕才切 PiP，且若已選影片就顯示該影片
+      els.btnPip.addEventListener("click", async () => {
+        await requestMode("pip");
+        if (!detail.videoId && state.items.length) {
+          showDetail(state.items[0], { switchToPip:false });
+        }
+      });
+
       els.btnInline.addEventListener("click", () => requestMode("inline"));
 
       els.btnSearch.addEventListener("click", async () => {
