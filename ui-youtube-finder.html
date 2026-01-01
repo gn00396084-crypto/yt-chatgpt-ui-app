@@ -15,10 +15,10 @@
       --btn:#111827;
       --btnText:#fff;
 
-      --rightW: 380px;     /* sidebar width */
-      --detailH: 260px;    /* sidebar height */
-      --pipMaxW: 560px;    /* pip max width */
-      --drawerW: min(520px, calc(100vw - 48px)); /* inline drawer width */
+      --rightW: 380px;
+      --detailH: 260px;
+      --pipMaxW: 560px;
+      --drawerW: min(520px, calc(100vw - 48px));
     }
 
     *{ box-sizing:border-box; }
@@ -676,34 +676,6 @@
         document.documentElement.style.setProperty("--detailH", `${detailH}px`);
       };
 
-      const applyModeLayout = () => {
-        const dm = getDisplayMode();
-        document.body.setAttribute("data-display", dm);
-        els.modeBadge.textContent = dm;
-
-        const layout = computeLayout();
-        document.body.setAttribute("data-layout", layout);
-
-        const hasDetail = !!detail.item;
-        if (layout === "split") {
-          els.detailPip.hidden = true;
-          hideDrawer(false);
-          els.detailSidebar.hidden = !hasDetail;
-        } else if (layout === "drawer") {
-          els.detailPip.hidden = true;
-          els.detailSidebar.hidden = true;
-          if (hasDetail) showDrawer();
-          else hideDrawer(false);
-        } else {
-          els.detailSidebar.hidden = true;
-          hideDrawer(false);
-          els.detailPip.hidden = !hasDetail;
-        }
-
-        updateCssVars();
-        refreshDebug();
-      };
-
       const notifyHeight = () => {
         try{
           const dm = getDisplayMode();
@@ -729,15 +701,30 @@
         syncAfterPaint();
       };
 
-      const showDrawer = () => {
-        els.drawerBackdrop.classList.add("show");
-        els.detailDrawer.classList.add("show");
-        els.detailDrawer.setAttribute("aria-hidden", "false");
+      // ===== Drawer open state (FIX: prevent auto-popup) =====
+      // Only open drawer when user picks an item.
+      let drawerUserOpened = false;
+
+      const setDrawerOpen = (open) => {
+        if (open) {
+          els.drawerBackdrop.classList.add("show");
+          els.detailDrawer.classList.add("show");
+          els.detailDrawer.setAttribute("aria-hidden", "false");
+        } else {
+          els.drawerBackdrop.classList.remove("show");
+          els.detailDrawer.classList.remove("show");
+          els.detailDrawer.setAttribute("aria-hidden", "true");
+        }
       };
+
+      const showDrawer = () => {
+        drawerUserOpened = true;
+        setDrawerOpen(true);
+      };
+
       const hideDrawer = (alsoClear = false) => {
-        els.drawerBackdrop.classList.remove("show");
-        els.detailDrawer.classList.remove("show");
-        els.detailDrawer.setAttribute("aria-hidden", "true");
+        drawerUserOpened = false;           // ✅ important
+        setDrawerOpen(false);
         if (alsoClear) clearDetail();
       };
 
@@ -746,7 +733,21 @@
       els.btnCloseSidebar.addEventListener("click", () => { clearDetail(); });
       els.btnClosePip.addEventListener("click", () => { clearDetail(); });
 
-      // ✅ 重要：縮圖 URL 生成 + cache-bust（修你「搜尋縮圖不換」）
+      // ===== State =====
+      let state = {
+        mode:"list_videos",
+        q:"",
+        cursor:0,
+        pageSize:3,
+        nextCursor:null,
+        total:null,
+        totalMatches:null,
+        channelTitle:"YouTube Finder",
+        items:[]
+      };
+
+      let detail = { item:null, videoId:null };
+
       const ytThumbFromId = (videoId) =>
         videoId ? `https://i.ytimg.com/vi/${encodeURIComponent(videoId)}/hqdefault.jpg` : "";
 
@@ -761,20 +762,6 @@
         const cb = item?.videoId || item?.url || String(idx);
         return withCb(base, cb);
       };
-
-      let state = {
-        mode:"list_videos",
-        q:"",
-        cursor:0,
-        pageSize:3,
-        nextCursor:null,
-        total:null,
-        totalMatches:null,
-        channelTitle:"YouTube Finder",
-        items:[]
-      };
-
-      let detail = { item:null, videoId:null };
 
       const openUrl = async (url) => {
         if (!url) return;
@@ -798,6 +785,13 @@
         }
       };
 
+      const resetDetailScrollTop = () => {
+        [els.sbBody, els.dwBody, els.pipBody].forEach(el => {
+          if (!el) return;
+          try { el.scrollTop = 0; } catch {}
+        });
+      };
+
       const clearDetail = () => {
         detail.item = null;
         detail.videoId = null;
@@ -807,18 +801,44 @@
         syncAfterPaint();
       };
 
-      const resetDetailScrollTop = () => {
-        [els.sbBody, els.dwBody, els.pipBody].forEach(el => {
-          if (!el) return;
-          try { el.scrollTop = 0; } catch {}
-        });
+      // ===== Layout apply (FIX: DO NOT auto-open drawer) =====
+      const applyModeLayout = () => {
+        const dm = getDisplayMode();
+        document.body.setAttribute("data-display", dm);
+        els.modeBadge.textContent = dm;
+
+        const layout = computeLayout();
+        document.body.setAttribute("data-layout", layout);
+
+        const hasDetail = !!detail.item;
+
+        if (layout === "split") {
+          els.detailPip.hidden = true;
+          setDrawerOpen(false); // close drawer visually (no state change)
+          els.detailSidebar.hidden = !hasDetail;
+        } else if (layout === "drawer") {
+          els.detailPip.hidden = true;
+          els.detailSidebar.hidden = true;
+
+          // ✅ only keep drawer open if user opened it AND detail exists
+          if (hasDetail && drawerUserOpened) setDrawerOpen(true);
+          else setDrawerOpen(false);
+
+        } else { // pip
+          els.detailSidebar.hidden = true;
+          setDrawerOpen(false);
+          els.detailPip.hidden = !hasDetail;
+        }
+
+        updateCssVars();
+        refreshDebug();
       };
 
       const renderDetail = (item) => {
         const title = item?.title || "";
         const sub = item?.publishedAt ? `上架：${String(item.publishedAt).slice(0,10)}` : "";
         const desc = (item?.description || "").trim() || "（無說明）";
-        const thumb = thumbUrlOf(item, 0); // ✅ 用同一套縮圖 fallback
+        const thumb = thumbUrlOf(item, 0);
         const foot = item?.videoId ? `videoId: ${item.videoId}` : "";
 
         els.sbHeaderTitle.textContent = title || "右側資訊";
@@ -855,16 +875,16 @@
         const layout = computeLayout();
         if (layout === "split") {
           els.detailSidebar.hidden = false;
-          hideDrawer(false);
           els.detailPip.hidden = true;
+          setDrawerOpen(false);
         } else if (layout === "drawer") {
           els.detailSidebar.hidden = true;
           els.detailPip.hidden = true;
-          showDrawer();
+          showDrawer(); // ✅ only here
         } else {
           els.detailPip.hidden = false;
           els.detailSidebar.hidden = true;
-          hideDrawer(false);
+          setDrawerOpen(false);
         }
 
         resetDetailScrollTop();
@@ -899,9 +919,7 @@
         els.btnPrev.disabled = state.cursor <= 0;
         els.btnNext.disabled = state.nextCursor == null;
 
-        // ✅ 強制先清空，再重建（避免宿主快取/保留）
         els.gallery.textContent = "";
-
         const thumbs = items.slice(0, desiredThumbCount());
         els.gallery.innerHTML = thumbs.length ? thumbs.map((v, idx) => {
           const t = thumbUrlOf(v, idx);
@@ -932,15 +950,6 @@
           el.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); onPick(Number(el.getAttribute("data-i"))); })
         );
 
-        if (detail.videoId) {
-          const hit = items.find(x => x?.videoId && x.videoId === detail.videoId);
-          if (hit) renderDetail(hit);
-        }
-
-        if (getDisplayMode() === "pip" && !detail.videoId && items.length) {
-          showDetail(items[0]);
-        }
-
         syncAfterPaint();
       };
 
@@ -963,6 +972,7 @@
         render(payload);
       };
 
+      // ===== Buttons =====
       els.btnFs.disabled = !supportsDisplayMode;
       els.btnPip.disabled = !supportsDisplayMode;
       els.btnInline.disabled = !supportsDisplayMode;
@@ -974,9 +984,16 @@
       });
       els.btnInline.addEventListener("click", () => requestMode("inline"));
 
+      // ✅ 換列表前一律清掉 detail，避免「上一頁/下一頁又彈最後抽屜」
+      const clearDetailBeforeListChange = () => {
+        if (detail.item) clearDetail();
+        drawerUserOpened = false;
+      };
+
       els.btnSearch.addEventListener("click", async () => {
         const q = els.q.value.trim();
         if (!q) return;
+        clearDetailBeforeListChange();
         state.mode = "search_videos";
         state.q = q;
         try { await callTool("search_videos", { q, cursor: 0, pageSize: desiredPageSize() }); }
@@ -985,18 +1002,22 @@
       els.q.addEventListener("keydown", (e) => { if (e.key === "Enter") els.btnSearch.click(); });
 
       els.btnLatest.addEventListener("click", async () => {
+        clearDetailBeforeListChange();
         state.mode = "latest_song";
         try { await callTool("latest_song", {}); }
         catch (e) { setStatus(e?.message || String(e)); }
       });
 
       els.btnReset.addEventListener("click", async () => {
+        clearDetailBeforeListChange();
         state.mode = "list_videos";
         try { await callTool("list_videos", { cursor: 0, pageSize: desiredPageSize(), sort: "newest" }); }
         catch (e) { setStatus(e?.message || String(e)); }
       });
 
       els.btnPrev.addEventListener("click", async () => {
+        if (els.btnPrev.disabled) return;
+        clearDetailBeforeListChange();
         const prev = Math.max(0, (state.cursor || 0) - (state.pageSize || 3));
         try {
           if (state.mode === "search_videos") await callTool("search_videos", { q: state.q, cursor: prev, pageSize: state.pageSize });
@@ -1005,6 +1026,8 @@
       });
 
       els.btnNext.addEventListener("click", async () => {
+        if (els.btnNext.disabled) return;
+        clearDetailBeforeListChange();
         if (state.nextCursor == null) return;
         try {
           if (state.mode === "search_videos") await callTool("search_videos", { q: state.q, cursor: state.nextCursor, pageSize: state.pageSize });
@@ -1053,9 +1076,6 @@
         const sidebarHidden = els.detailSidebar.hidden;
         const pipHidden = els.detailPip.hidden;
         const drawerOpen = els.detailDrawer.classList.contains("show");
-
-        const cssRightW = getComputedStyle(document.documentElement).getPropertyValue("--rightW").trim();
-        const cssDetailH = getComputedStyle(document.documentElement).getPropertyValue("--detailH").trim();
         const mh = (typeof host?.maxHeight === "number") ? host.maxHeight : null;
 
         const payload = getHostPayload();
@@ -1068,24 +1088,17 @@ requestDisplayMode: ${supportsDisplayMode ? "yes" : "no"}
 layout(computeLayout): ${layout}
 host.maxHeight: ${mh ?? "n/a"}
 
+Panels
+sidebarHidden: ${sidebarHidden}
+drawerOpen: ${drawerOpen}
+drawerUserOpened: ${drawerUserOpened}
+pipHidden: ${pipHidden}
+hasDetail: ${!!detail.item}
+
 Viewport / Root
 viewport(inner): ${window.innerWidth}x${window.innerHeight}
 rootRect: ${Math.round(rootRect.width)}x${Math.round(rootRect.height)}
 main grid-template-columns: ${mainCols}
-
-Panels
-sidebarHidden: ${sidebarHidden}
-drawerOpen: ${drawerOpen}
-pipHidden: ${pipHidden}
-hasDetail: ${!!detail.item}
-
-CSS vars
---rightW: ${cssRightW}
---detailH: ${cssDetailH}
-
-Heights
-bodyCH/bodySH: ${document.body.clientHeight}/${document.body.scrollHeight}
-deCH/deSH: ${document.documentElement.clientHeight}/${document.documentElement.scrollHeight}
 
 Last Tool Output
 isOurPayload: ${isOurPayload(payload)}
