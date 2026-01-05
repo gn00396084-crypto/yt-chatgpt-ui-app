@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>YouTube Finder UI (Inline Drawer + Debug)</title>
+
+  <!-- 外部樣式 -->
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+
+<body data-display="inline" data-layout="single">
+  <div id="root">
+    <div class="top" id="topBar">
+      <div class="titleRow">
+        <div class="title" id="channelTitle">🎧 YouTube Finder</div>
+        <span class="badge" id="modeBadge">inline</span>
+      </div>
+
+      <div class="controls" id="controlsBar">
+        <input id="q" placeholder="輸入關鍵字（title/desc/tags）" />
+        <button id="btnSearch" class="btn primary" type="button">搜尋</button>
+        <button id="btnLatest" class="btn" type="button">新歌</button>
+        <button id="btnReset" class="btn" type="button">清單</button>
+
+        <button id="btnFs" class="btn" type="button">全螢幕</button>
+        <button id="btnPip" class="btn" type="button">PiP</button>
+        <button id="btnInline" class="btn" type="button">回Inline</button>
+
+        <button id="btnDebug" class="btn" type="button">Debug</button>
+      </div>
+    </div>
+
+    <div class="meta" id="meta"></div>
+    <div class="hint">
+      Inline 寬度不足時，右側資訊欄會改用「右側抽屜」呈現（可關閉）。Fullscreen 或寬度足夠會顯示右側固定欄。
+    </div>
+
+    <div class="main" id="main">
+      <div id="listView">
+        <div class="gallery" id="gallery"></div>
+        <ul class="links" id="links"></ul>
+        <div class="pager">
+          <button id="btnPrev" class="btn" type="button" disabled>上一頁</button>
+          <button id="btnNext" class="btn" type="button" disabled>下一頁</button>
+        </div>
+      </div>
+
+      <div id="detailSidebar" hidden>
+        <div class="detailCard">
+          <div class="detailHeader">
+            <div class="detailHeaderLeft">
+              <div class="detailHeaderTitle" id="sbHeaderTitle">右側資訊</div>
+              <div class="detailHeaderSub" id="sbHeaderSub">點選左邊項目顯示</div>
+            </div>
+            <button id="btnCloseSidebar" class="btn" type="button" style="height:30px;">關閉</button>
+          </div>
+
+          <div class="detailBody" id="sbBody">
+            <div class="detailHero">
+              <img id="detailImg" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" />
+            </div>
+            <div class="detailTitle" id="detailTitle"></div>
+            <div class="detailSub" id="detailSub"></div>
+            <div class="detailText" id="detailText"></div>
+
+            <div class="actions">
+              <button id="btnOpen" class="btn primary" type="button">開啟連結</button>
+              <button id="btnAsk" class="btn" type="button">問 ChatGPT</button>
+              <button id="btnBack" class="btn" type="button">清除右欄</button>
+            </div>
+
+            <div class="divider"></div>
+            <div class="detailFoot" id="detailFoot"></div>
+          </div>
+        </div>
+      </div>
+
+      <div id="detailPip" hidden>
+        <div class="detailCard">
+          <div class="detailHeader">
+            <div class="detailHeaderLeft">
+              <div class="detailHeaderTitle" id="pipHeaderTitle">右側資訊</div>
+              <div class="detailHeaderSub" id="pipHeaderSub">PiP 模式</div>
+            </div>
+            <button id="btnClosePip" class="btn" type="button" style="height:30px;">清除</button>
+          </div>
+          <div class="detailBody" id="pipBody">
+            <div class="detailHero">
+              <img id="pipImg" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" />
+            </div>
+            <div class="detailTitle" id="pipTitle"></div>
+            <div class="detailSub" id="pipSub"></div>
+            <div class="detailText" id="pipText"></div>
+
+            <div class="actions">
+              <button id="pipOpen" class="btn primary" type="button">開啟連結</button>
+              <button id="pipAsk" class="btn" type="button">問 ChatGPT</button>
+              <button id="pipClear" class="btn" type="button">清除</button>
+            </div>
+
+            <div class="divider"></div>
+            <div class="detailFoot" id="pipFoot"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <details class="debugDetails" id="debugDetails">
+      <summary>🐞 Debug（點開）</summary>
+      <div class="mono" id="dbgText">loading...</div>
+      <div class="debugActions">
+        <button class="btn" id="dbgRefresh" type="button">重新量測</button>
+        <button class="btn" id="dbgCopy" type="button">複製</button>
+      </div>
+    </details>
+
+    <div class="status" id="status"></div>
+  </div>
+
+  <div id="drawerBackdrop"></div>
+  <div id="detailDrawer" aria-hidden="true">
+    <div class="detailCard">
+      <div class="detailHeader">
+        <div class="detailHeaderLeft">
+          <div class="detailHeaderTitle" id="dwHeaderTitle">右側資訊</div>
+          <div class="detailHeaderSub" id="dwHeaderSub">Inline 抽屜</div>
+        </div>
+        <button id="btnCloseDrawer" class="btn" type="button" style="height:30px;">關閉</button>
+      </div>
+
+      <div class="detailBody" id="dwBody">
+        <div class="detailHero">
+          <img id="dwImg" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" />
+        </div>
+        <div class="detailTitle" id="dwTitle"></div>
+        <div class="detailSub" id="dwSub"></div>
+        <div class="detailText" id="dwText"></div>
+
+        <div class="actions">
+          <button id="dwOpen" class="btn primary" type="button">開啟連結</button>
+          <button id="dwAsk" class="btn" type="button">問 ChatGPT</button>
+          <button id="dwClear" class="btn" type="button">清除</button>
+        </div>
+
+        <div class="divider"></div>
+        <div class="detailFoot" id="dwFoot"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 單一 JS 檔 -->
+  <script src="./app.js"></script>
+</body>
+</html>
